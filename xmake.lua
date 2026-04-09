@@ -789,6 +789,7 @@ target("libmogan") do
             "src/Typeset/Bridge",
             "src/Typeset/Concat",
             "src/Typeset/Page",
+            "src/Mogan/TemplateCenter",
             "TeXmacs/include",
             "$(buildir)/glue",
             "$(projectdir)/TeXmacs/plugins/goldfish/src/",
@@ -829,6 +830,7 @@ target("libmogan") do
             "$(projectdir)/3rdparty/json-schema-validator/src/**.cpp"})
 
     add_files("src/Plugins/Qt/**.cpp", "src/Plugins/Qt/**.hpp")
+    add_files("src/Mogan/TemplateCenter/**.cpp", "src/Mogan/TemplateCenter/**.hpp")
 
     -- Add Qt resource file
     add_rules("qt.qrc")
@@ -875,6 +877,7 @@ local stem_files = {
     "$(projectdir)/TeXmacs(/progs/**)",
     "$(projectdir)/TeXmacs(/styles/**)",
     "$(projectdir)/TeXmacs(/texts/**)",
+    "$(projectdir)/TeXmacs(/templates/**)",
     "$(projectdir)/TeXmacs/COPYING", -- copying files are different
     "$(projectdir)/TeXmacs/INSTALL",
     "$(projectdir)/LICENSE", -- license files are same
