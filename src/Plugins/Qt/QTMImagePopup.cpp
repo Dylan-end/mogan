@@ -159,28 +159,23 @@ QTMImagePopup::updatePosition (qt_renderer_rep* ren) {
 // 根据DPI缩放和图片缩放比例自动调整按钮大小和窗口尺寸
 void
 QTMImagePopup::autoSize () {
-  QScreen*     Screen    = QGuiApplication::primaryScreen ();
-  const double Dpi       = Screen ? Screen->logicalDotsPerInch () : 96.0;
-  const double Scale     = Dpi / 96.0;
-  const int    baseWidth = 200;
-  const int    baseHeight= 50;
-  double       totalScale= Scale * cached_magf * 3.0;
-  int          IconSize;
-#if defined(Q_OS_MAC)
-  IconSize= int (50 * totalScale);
-#else
-  IconSize= int (40 * totalScale);
-#endif
+  const double Scale= DpiUtils::scaleFactor ();
+  // 基准窗口大小（逻辑像素）
+  const int baseWidth = 200;
+  const int baseHeight= 50;
+  double    totalScale= Scale * cached_magf * 2.0; // 减小缩放因子
+  int       IconSize  = int (40 * totalScale);
   if (cached_magf <= 0.16) {
-    cached_width = 169;
-    cached_height= 42;
+    // 文档缩放很小时，使用固定大小（仅DPI缩放）
+    cached_width = DpiUtils::scaled (169);
+    cached_height= DpiUtils::scaled (42);
     IconSize     = 25;
-    setFixedSize (169, 42);
+    setFixedSize (cached_width, cached_height);
   }
   else {
-    cached_width = baseWidth * totalScale;
-    cached_height= baseHeight * totalScale;
-    this->resize (int (baseWidth * totalScale), int (baseHeight * totalScale));
+    cached_width = int (baseWidth * totalScale);
+    cached_height= int (baseHeight * totalScale);
+    this->resize (cached_width, cached_height);
   }
   leftBtn->setIconSize (QSize (IconSize, IconSize));
   middleBtn->setIconSize (QSize (IconSize, IconSize));

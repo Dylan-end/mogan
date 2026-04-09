@@ -22,14 +22,12 @@
 #include "tm_ostream.hpp"
 
 #include <QFrame>
-#include <QGuiApplication>
 #include <QHelpEvent>
 #include <QIcon>
 #include <QLabel>
 #include <QLayoutItem>
 #include <QPainter>
 #include <QPen>
-#include <QScreen>
 #include <QSizePolicy>
 #include <QToolButton>
 #include <QToolTip>
@@ -285,12 +283,9 @@ QTMTextToolbar::selectionInView () const {
 void
 QTMTextToolbar::autoSize () {
   // 根据DPI和缩放因子自动调整大小
-  QScreen*     Screen= QGuiApplication::primaryScreen ();
-  const double Dpi   = Screen ? Screen->logicalDotsPerInch () : 96.0;
-  const double Scale = Dpi / 96.0;
-  const double totalScale=
-      Scale * cached_magf * 12.0; // 原始3.0倍，扩大4倍后为12.0倍
-  int btn_size;
+  const double Scale     = DpiUtils::scaleFactor ();
+  const double totalScale= Scale * cached_magf * 12.0;
+  int          btn_size;
 
   btn_size= int (40 * totalScale);
 
@@ -298,10 +293,10 @@ QTMTextToolbar::autoSize () {
     btn_size= 25;
   }
 
-  // 设置按钮大小
+  // 设置按钮大小（使用 DpiUtils 处理内边距）
   QSize                     icon_size (btn_size, btn_size);
-  QSize                     fixed_size (btn_size + 32,
-                                        btn_size + 32); // 内边距也扩大4倍 (8 * 4.0 = 32)
+  int                       padding= DpiUtils::scaled (16);
+  QSize                     fixed_size (btn_size + padding, btn_size + padding);
   const QList<QToolButton*> buttons=
       findChildren<QToolButton*> (QString (), Qt::FindChildrenRecursively);
   for (QToolButton* button : buttons) {
