@@ -29,7 +29,9 @@
 #include <QTimer>
 #include <QVBoxLayout>
 
+#include "qt_dpi_utils.hpp"
 #include "qt_pdf_preview_widget.hpp"
+#include "qt_utilities.hpp"
 #include "template_manager.hpp"
 
 namespace {
@@ -40,6 +42,48 @@ constexpr int PREVIEW_IMAGE_HEIGHT= 300;
 // 缩略图尺寸
 constexpr int THUMBNAIL_WIDTH = 196;
 constexpr int THUMBNAIL_HEIGHT= 110;
+
+constexpr int kPageMargin          = 32;  // 页面边距
+constexpr int kPageSpacing         = 24;  // 页面主布局间距
+constexpr int kCategorySpacing     = 8;   // 分类按钮间距
+constexpr int kGridSpacing         = 20;  // 模板网格间距
+constexpr int kCardWidth           = 220; // 模板卡片宽度
+constexpr int kCardHeight          = 200; // 模板卡片高度
+constexpr int kCardMargin          = 12;  // 卡片内边距
+constexpr int kCardSpacing         = 8;   // 卡片内部间距
+constexpr int kNameLabelMaxHeight  = 40;  // 模板名称最大高度
+constexpr int kPreviewDialogMinW   = 600; // 预览弹窗最小宽度
+constexpr int kPreviewDialogMinH   = 500; // 预览弹窗最小高度
+constexpr int kPreviewLayoutSpacing= 16;  // 预览弹窗布局间距
+constexpr int kPreviewLayoutMargin = 24;  // 预览弹窗布局边距
+constexpr int kPageTitleFontPx     = 24;  // 页面标题字号
+constexpr int kLoadingFontPx       = 14;  // Loading 文案字号
+constexpr int kTemplateNameFontPx  = 14;  // 模板名称字号
+constexpr int kPreviewTitleFontPx  = 18;  // 预览标题字号
+constexpr int kPreviewDescFontPx   = 14;  // 预览描述字号
+constexpr int kUseButtonFontPx     = 13;  // Use Template 按钮字号
+constexpr int kInfoFontPx          = 11;  // 模板信息字号
+constexpr int kThumbRadiusPx       = 4;   // 缩略图圆角
+constexpr int kThumbBorderWidthPx  = 1;   // 缩略图边框宽度
+constexpr int kUseButtonRadiusPx   = 4;   // Use Template 按钮圆角
+constexpr int kUseButtonPadYPx     = 8;   // Use Template 按钮纵向内边距
+constexpr int kUseButtonPadXPx     = 24;  // Use Template 按钮横向内边距
+
+void
+applyThumbnailFrameStyle (QLabel* label, bool loaded) {
+  if (!label) return;
+  if (loaded) {
+    label->setStyleSheet (QString ("border-radius: %1px; border-width: 0px;")
+                              .arg (DpiUtils::scaled (kThumbRadiusPx)));
+  }
+  else {
+    label->setStyleSheet (
+        QString (
+            "border-radius: %1px; border-width: %2px; border-style: solid;")
+            .arg (DpiUtils::scaled (kThumbRadiusPx))
+            .arg (DpiUtils::scaled (kThumbBorderWidthPx)));
+  }
+}
 
 } // namespace
 
@@ -87,19 +131,22 @@ QTTemplatePage::initialize () {
 void
 QTTemplatePage::setupUI () {
   QVBoxLayout* layout= new QVBoxLayout (this);
-  layout->setContentsMargins (32, 32, 32, 32);
-  layout->setSpacing (24);
+  layout->setContentsMargins (
+      DpiUtils::scaled (kPageMargin), DpiUtils::scaled (kPageMargin),
+      DpiUtils::scaled (kPageMargin), DpiUtils::scaled (kPageMargin));
+  layout->setSpacing (DpiUtils::scaled (kPageSpacing));
 
   // Title
-  titleLabel_= new QLabel (tr ("Template Center"), this);
+  titleLabel_= new QLabel (qt_translate ("Template Center"), this);
   titleLabel_->setObjectName ("startup-tab-page-title");
+  DpiUtils::applyScaledFont (titleLabel_, kPageTitleFontPx);
   layout->addWidget (titleLabel_);
 
   // Category bar
   categoryBar_               = new QWidget (this);
   QHBoxLayout* categoryLayout= new QHBoxLayout (categoryBar_);
   categoryLayout->setContentsMargins (0, 0, 0, 0);
-  categoryLayout->setSpacing (8);
+  categoryLayout->setSpacing (DpiUtils::scaled (kCategorySpacing));
   layout->addWidget (categoryBar_);
 
   // Scroll area for templates
@@ -110,16 +157,18 @@ QTTemplatePage::setupUI () {
 
   gridWidget_= new QWidget (scrollArea_);
   gridLayout_= new QGridLayout (gridWidget_);
-  gridLayout_->setSpacing (20);
+  gridLayout_->setSpacing (DpiUtils::scaled (kGridSpacing));
   gridLayout_->setContentsMargins (0, 0, 0, 0);
 
   scrollArea_->setWidget (gridWidget_);
   layout->addWidget (scrollArea_, 1);
 
   // Loading label
-  QLabel* loadingLabel= new QLabel (tr ("Loading templates..."), gridWidget_);
+  QLabel* loadingLabel=
+      new QLabel (qt_translate ("Loading templates..."), gridWidget_);
   loadingLabel->setObjectName ("startup-tab-loading");
   loadingLabel->setAlignment (Qt::AlignCenter);
+  DpiUtils::applyScaledFont (loadingLabel, kLoadingFontPx);
   gridLayout_->addWidget (loadingLabel, 0, 0, 1, 3);
 }
 
@@ -146,7 +195,7 @@ QTTemplatePage::setupCategoryBar () {
   if (!categoryLayout) return;
 
   // Add "All" button
-  QPushButton* allBtn= new QPushButton (tr ("All"), categoryBar_);
+  QPushButton* allBtn= new QPushButton (qt_translate ("All"), categoryBar_);
   allBtn->setObjectName ("startup-tab-category-btn");
   allBtn->setCheckable (true);
   allBtn->setChecked (currentCategory_.isEmpty ());
@@ -223,7 +272,7 @@ QTTemplatePage::refreshTemplateGrid (const QString& category) {
   }
 
   if (!templateManager_ || !templateManager_->isInitialized ()) {
-    QLabel* label= new QLabel (tr ("Initializing..."), gridWidget_);
+    QLabel* label= new QLabel (qt_translate ("Initializing..."), gridWidget_);
     label->setAlignment (Qt::AlignCenter);
     gridLayout_->addWidget (label, 0, 0, 1, 3);
     return;
@@ -239,7 +288,8 @@ QTTemplatePage::refreshTemplateGrid (const QString& category) {
   }
 
   if (templates.isEmpty ()) {
-    QLabel* label= new QLabel (tr ("No templates available."), gridWidget_);
+    QLabel* label=
+        new QLabel (qt_translate ("No templates available."), gridWidget_);
     label->setAlignment (Qt::AlignCenter);
     gridLayout_->addWidget (label, 0, 0, 1, 3);
     return;
@@ -265,10 +315,13 @@ QWidget*
 QTTemplatePage::createTemplateCard (const TemplateMetadataPtr& tmpl) {
   QWidget*     card  = new QWidget (gridWidget_);
   QVBoxLayout* layout= new QVBoxLayout (card);
-  layout->setContentsMargins (12, 12, 12, 12);
-  layout->setSpacing (8);
+  layout->setContentsMargins (
+      DpiUtils::scaled (kCardMargin), DpiUtils::scaled (kCardMargin),
+      DpiUtils::scaled (kCardMargin), DpiUtils::scaled (kCardMargin));
+  layout->setSpacing (DpiUtils::scaled (kCardSpacing));
   card->setObjectName ("startup-tab-template-card");
-  card->setFixedSize (220, 200);
+  card->setFixedSize (DpiUtils::scaled (kCardWidth),
+                      DpiUtils::scaled (kCardHeight));
   card->setCursor (Qt::PointingHandCursor);
   card->setProperty ("templateId", tmpl->id);
   card->setToolTip (tmpl->description);
@@ -276,11 +329,12 @@ QTTemplatePage::createTemplateCard (const TemplateMetadataPtr& tmpl) {
   // Thumbnail image
   QLabel* thumbnailLabel= new QLabel (card);
   thumbnailLabel->setObjectName ("startup-tab-template-thumbnail");
-  thumbnailLabel->setFixedSize (196, 110);
+  thumbnailLabel->setFixedSize (DpiUtils::scaled (THUMBNAIL_WIDTH),
+                                DpiUtils::scaled (THUMBNAIL_HEIGHT));
   thumbnailLabel->setAlignment (Qt::AlignCenter);
-  thumbnailLabel->setStyleSheet (
-      "background: #f5f5f5; border-radius: 4px; border: 1px solid #ddd;");
-  thumbnailLabel->setText (tr ("Loading..."));
+  thumbnailLabel->setProperty ("thumbnailLoaded", false);
+  applyThumbnailFrameStyle (thumbnailLabel, false);
+  thumbnailLabel->setText (qt_translate ("Loading..."));
   layout->addWidget (thumbnailLabel, 0, Qt::AlignHCenter);
 
   // Load thumbnail from URL
@@ -288,7 +342,7 @@ QTTemplatePage::createTemplateCard (const TemplateMetadataPtr& tmpl) {
     loadThumbnail (thumbnailLabel, tmpl->thumbnailUrl);
   }
   else {
-    thumbnailLabel->setText (tr ("No Preview"));
+    thumbnailLabel->setText (qt_translate ("No Preview"));
   }
 
   // Template name
@@ -296,7 +350,8 @@ QTTemplatePage::createTemplateCard (const TemplateMetadataPtr& tmpl) {
   nameLabel->setObjectName ("startup-tab-template-name");
   nameLabel->setAlignment (Qt::AlignCenter);
   nameLabel->setWordWrap (true);
-  nameLabel->setMaximumHeight (40);
+  nameLabel->setMaximumHeight (DpiUtils::scaled (kNameLabelMaxHeight));
+  DpiUtils::applyScaledFont (nameLabel, kTemplateNameFontPx);
   layout->addWidget (nameLabel);
 
   // Author and version
@@ -304,7 +359,7 @@ QTTemplatePage::createTemplateCard (const TemplateMetadataPtr& tmpl) {
       new QLabel (QString ("%1 · v%2").arg (tmpl->author, tmpl->version), card);
   infoLabel->setObjectName ("startup-tab-template-info");
   infoLabel->setAlignment (Qt::AlignCenter);
-  infoLabel->setStyleSheet ("color: #888; font-size: 11px;");
+  DpiUtils::applyScaledFont (infoLabel, kInfoFontPx);
   layout->addWidget (infoLabel);
 
   layout->addStretch ();
@@ -350,17 +405,21 @@ QTTemplatePage::processThumbnailQueue () {
           QByteArray data= reply->readAll ();
           QImage     image;
           if (image.loadFromData (data)) {
-            image= image.scaled (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT,
+            image= image.scaled (DpiUtils::scaled (THUMBNAIL_WIDTH),
+                                 DpiUtils::scaled (THUMBNAIL_HEIGHT),
                                  Qt::KeepAspectRatio, Qt::SmoothTransformation);
             req.label->setPixmap (QPixmap::fromImage (image));
-            req.label->setStyleSheet ("border-radius: 4px;");
+            req.label->setProperty ("thumbnailLoaded", true);
+            applyThumbnailFrameStyle (req.label, true);
+            req.label->style ()->unpolish (req.label);
+            req.label->style ()->polish (req.label);
           }
           else {
-            req.label->setText (tr ("Preview"));
+            req.label->setText (qt_translate ("Preview"));
           }
         }
         else {
-          req.label->setText (tr ("Preview"));
+          req.label->setText (qt_translate ("Preview"));
         }
       }
 
@@ -396,30 +455,40 @@ QTTemplatePage::showTemplatePreview (const QString& templateId) {
 
   // Create preview dialog
   QDialog* dialog= new QDialog (this);
-  dialog->setWindowTitle (tr ("Template Preview - %1").arg (tmpl->name));
-  dialog->setMinimumSize (600, 500);
+  dialog->setWindowTitle (
+      qt_translate ("Template Preview - %1").arg (tmpl->name));
+  dialog->setMinimumSize (DpiUtils::scaled (kPreviewDialogMinW),
+                          DpiUtils::scaled (kPreviewDialogMinH));
 
   QVBoxLayout* layout= new QVBoxLayout (dialog);
-  layout->setSpacing (16);
-  layout->setContentsMargins (24, 24, 24, 24);
+  layout->setSpacing (DpiUtils::scaled (kPreviewLayoutSpacing));
+  layout->setContentsMargins (DpiUtils::scaled (kPreviewLayoutMargin),
+                              DpiUtils::scaled (kPreviewLayoutMargin),
+                              DpiUtils::scaled (kPreviewLayoutMargin),
+                              DpiUtils::scaled (kPreviewLayoutMargin));
 
   // Title
   QLabel* titleLabel= new QLabel (tmpl->name, dialog);
   titleLabel->setObjectName ("template-preview-title");
-  titleLabel->setStyleSheet ("font-size: 18px; font-weight: bold;");
+  QFont titleFont=
+      DpiUtils::scaledFont (titleLabel->font (), kPreviewTitleFontPx);
+  titleFont.setBold (true);
+  titleLabel->setFont (titleFont);
   layout->addWidget (titleLabel);
 
   // Description
   QLabel* descLabel= new QLabel (tmpl->description, dialog);
   descLabel->setObjectName ("template-preview-desc");
   descLabel->setWordWrap (true);
-  descLabel->setStyleSheet ("color: #666;");
+  DpiUtils::applyScaledFont (descLabel, kPreviewDescFontPx);
   layout->addWidget (descLabel);
 
   // Info row
   QHBoxLayout* infoLayout= new QHBoxLayout ();
-  infoLayout->addWidget (new QLabel (tr ("Author: %1").arg (tmpl->author)));
-  infoLayout->addWidget (new QLabel (tr ("Version: %1").arg (tmpl->version)));
+  infoLayout->addWidget (
+      new QLabel (qt_translate ("Author: %1").arg (tmpl->author)));
+  infoLayout->addWidget (
+      new QLabel (qt_translate ("Version: %1").arg (tmpl->version)));
   infoLayout->addStretch ();
   layout->addLayout (infoLayout);
 
@@ -435,7 +504,8 @@ QTTemplatePage::showTemplatePreview (const QString& templateId) {
     else {
       // 使用QTPdfPreviewWidget加载图片预览
       previewWidget->loadImageFromUrl (
-          tmpl->previewUrl, QSize (PREVIEW_IMAGE_WIDTH, PREVIEW_IMAGE_HEIGHT));
+          tmpl->previewUrl, QSize (DpiUtils::scaled (PREVIEW_IMAGE_WIDTH),
+                                   DpiUtils::scaled (PREVIEW_IMAGE_HEIGHT)));
     }
   }
   layout->addWidget (previewWidget, 0, Qt::AlignCenter);
@@ -444,12 +514,17 @@ QTTemplatePage::showTemplatePreview (const QString& templateId) {
   QHBoxLayout* btnLayout= new QHBoxLayout ();
   btnLayout->addStretch ();
 
-  QPushButton* cancelBtn= new QPushButton (tr ("Cancel"), dialog);
+  QPushButton* cancelBtn= new QPushButton (qt_translate ("Cancel"), dialog);
   connect (cancelBtn, &QPushButton::clicked, dialog, &QDialog::reject);
   btnLayout->addWidget (cancelBtn);
 
-  QPushButton* useBtn= new QPushButton (tr ("Use Template"), dialog);
+  QPushButton* useBtn= new QPushButton (qt_translate ("Use Template"), dialog);
   useBtn->setObjectName ("template-use-btn");
+  DpiUtils::applyScaledFont (useBtn, kUseButtonFontPx);
+  useBtn->setStyleSheet (QString ("padding: %1px %2px; border-radius: %3px;")
+                             .arg (DpiUtils::scaled (kUseButtonPadYPx))
+                             .arg (DpiUtils::scaled (kUseButtonPadXPx))
+                             .arg (DpiUtils::scaled (kUseButtonRadiusPx)));
   useBtn->setDefault (true);
   connect (useBtn, &QPushButton::clicked, [this, dialog, templateId] () {
     dialog->accept ();
@@ -478,8 +553,8 @@ QTTemplatePage::downloadAndUseTemplate (const QString& templateId) {
   if (templateManager_->isTemplateAvailableLocally (templateId)) {
     QString localPath= templateManager_->localTemplatePath (templateId);
     if (localPath.isEmpty ()) {
-      QMessageBox::warning (this, tr ("Template Error"),
-                            tr ("Local template file is missing"));
+      QMessageBox::warning (this, qt_translate ("Template Error"),
+                            qt_translate ("Local template file is missing"));
       return;
     }
     emit templateOpened (localPath);
@@ -492,8 +567,9 @@ QTTemplatePage::downloadAndUseTemplate (const QString& templateId) {
       cleanupProgressDialog ();
     }
 
-    progressDialog_= new QProgressDialog (tr ("Downloading template..."),
-                                          tr ("Cancel"), 0, 100, this);
+    progressDialog_=
+        new QProgressDialog (qt_translate ("Downloading template..."),
+                             qt_translate ("Cancel"), 0, 100, this);
     progressDialog_->setWindowModality (Qt::WindowModal);
     progressDialog_->setAutoClose (true);
 
@@ -581,8 +657,9 @@ QTTemplatePage::onDownloadFailed (const QString& templateId,
   // Check if this download was cancelled by the user
   // If so, don't show the error dialog
   if (!downloadCancelledByUser_) {
-    QMessageBox::warning (this, tr ("Download Failed"),
-                          tr ("Failed to download template: %1").arg (error));
+    QMessageBox::warning (
+        this, qt_translate ("Download Failed"),
+        qt_translate ("Failed to download template: %1").arg (error));
   }
   // Reset the flag for next download
   downloadCancelledByUser_= false;
