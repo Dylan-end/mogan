@@ -420,9 +420,10 @@ qt_tm_widget_rep::qt_tm_widget_rep (int mask, command _quit)
   // status bar
 
   QStatusBar* bar= new QStatusBar (mw);
-  leftLabel      = new QLabel (qt_translate ("Welcome to TeXmacs"), bar);
-  middleLabel    = new QLabel ("", bar);
-  rightLabel     = new QLabel (qt_translate ("Booting"), bar);
+  bar->setObjectName ("statusBar");
+  leftLabel  = new QLabel (qt_translate ("Welcome to TeXmacs"), bar);
+  middleLabel= new QLabel ("", bar);
+  rightLabel = new QLabel (qt_translate ("Booting"), bar);
   leftLabel->setFrameStyle (QFrame::NoFrame);
   middleLabel->setFrameStyle (QFrame::NoFrame);
   rightLabel->setFrameStyle (QFrame::NoFrame);
@@ -560,6 +561,7 @@ qt_tm_widget_rep::qt_tm_widget_rep (int mask, command _quit)
   bl->setSpacing (0);
   cw->setLayout (bl);
   QWidget* q= main_widget->as_qwidget (); // force creation of QWidget
+  q->setObjectName ("editorCanvas");
   q->setParent (
       qwid); // q->layout()->removeWidget(q) will reset the parent to this
   bl->addWidget (
