@@ -70,6 +70,17 @@ parsePlacement (const QString& value, QWK::TutorialPlacement& placement) {
 }
 
 bool
+parseBubbleSize (const QString& value, QWK::TutorialBubbleSize& bubbleSize) {
+  const QString normalized= value.trimmed ().toLower ();
+  if (normalized == "small") bubbleSize= QWK::TutorialBubbleSize::Small;
+  else if (normalized == "medium") bubbleSize= QWK::TutorialBubbleSize::Medium;
+  else if (normalized == "large") bubbleSize= QWK::TutorialBubbleSize::Large;
+  else return false;
+
+  return true;
+}
+
+bool
 parseBoolLike (const QString& value, bool& out) {
   const QString normalized= value.trimmed ().toLower ();
   if (normalized == "on" || normalized == "true" || normalized == "1" ||
@@ -191,12 +202,6 @@ parseStepEntry (const json& stepJson, QWK::TutorialStepConfig& step,
           QString ("Tutorial step %1 target-id must be a string").arg (step.id);
     return false;
   }
-  if (!found || step.targetId.isEmpty ()) {
-    if (errorMessage != nullptr)
-      *errorMessage=
-          QString ("Tutorial step %1 is missing target-id").arg (step.id);
-    return false;
-  }
 
   QString placement;
   if (!readStringField ("placement", placement, &found)) {
@@ -211,6 +216,43 @@ parseStepEntry (const json& stepJson, QWK::TutorialStepConfig& step,
       *errorMessage=
           QString ("Tutorial step %1 has invalid placement").arg (step.id);
     return false;
+  }
+
+  QString bubbleSize;
+  if (!readStringField ("bubble-size", bubbleSize, &found)) {
+    if (errorMessage != nullptr)
+      *errorMessage= QString ("Tutorial step %1 bubble-size must be a string")
+                         .arg (step.id);
+    return false;
+  }
+  if (found && !bubbleSize.isEmpty () &&
+      !parseBubbleSize (bubbleSize, step.bubbleSize)) {
+    if (errorMessage != nullptr)
+      *errorMessage=
+          QString ("Tutorial step %1 has invalid bubble-size").arg (step.id);
+    return false;
+  }
+
+  const auto offsetXIt= stepJson.find ("offset-x");
+  if (offsetXIt != stepJson.end () && !offsetXIt->is_null ()) {
+    if (!offsetXIt->is_number_integer ()) {
+      if (errorMessage != nullptr)
+        *errorMessage=
+            QString ("Tutorial step %1 has invalid offset-x").arg (step.id);
+      return false;
+    }
+    step.offsetX= offsetXIt->get<int> ();
+  }
+
+  const auto offsetYIt= stepJson.find ("offset-y");
+  if (offsetYIt != stepJson.end () && !offsetYIt->is_null ()) {
+    if (!offsetYIt->is_number_integer ()) {
+      if (errorMessage != nullptr)
+        *errorMessage=
+            QString ("Tutorial step %1 has invalid offset-y").arg (step.id);
+      return false;
+    }
+    step.offsetY= offsetYIt->get<int> ();
   }
 
   const auto paddingIt= stepJson.find ("highlight-padding");
@@ -387,15 +429,15 @@ TutorialConfigLoader::loadFlow (url path, TutorialFlowConfig& config,
 
 TutorialBubble::TutorialBubble (QWidget* parent)
     : QWidget (parent), m_titleLabel (new QLabel (this)),
-      m_topTextLabel (new QLabel (this)), m_mediaLabel (new QLabel (this)),
-      m_bottomTextLabel (new QLabel (this)),
+      m_topTextLabel (new QLabel (this)), m_mediaContainer (new QWidget (this)),
+      m_mediaLabel (new QLabel (this)), m_bottomTextLabel (new QLabel (this)),
       m_progressLabel (new QLabel (this)),
       m_previousButton (new QPushButton (this)),
       m_nextButton (new QPushButton (this)), m_mediaMovie (nullptr),
       m_currentMediaPath () {
   setObjectName ("tutorialBubble");
   setAttribute (Qt::WA_StyledBackground, true);
-  setSizePolicy (QSizePolicy::Fixed, QSizePolicy::Fixed);
+  setSizePolicy (QSizePolicy::Fixed, QSizePolicy::Preferred);
 
   m_titleLabel->setObjectName ("tutorialTitle");
   m_topTextLabel->setObjectName ("tutorialBodyText");
@@ -406,8 +448,16 @@ TutorialBubble::TutorialBubble (QWidget* parent)
   m_titleLabel->setWordWrap (true);
   m_topTextLabel->setWordWrap (true);
   m_bottomTextLabel->setWordWrap (true);
+  m_mediaContainer->setSizePolicy (QSizePolicy::Expanding, QSizePolicy::Fixed);
+  m_mediaContainer->setVisible (false);
+  m_mediaContainer->setFixedSize (0, 0);
   m_mediaLabel->setAlignment (Qt::AlignCenter);
-  m_mediaLabel->setSizePolicy (QSizePolicy::Expanding, QSizePolicy::Fixed);
+  m_mediaLabel->setSizePolicy (QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+  auto* mediaLayout= new QVBoxLayout (m_mediaContainer);
+  mediaLayout->setContentsMargins (0, 0, 0, 0);
+  mediaLayout->setSpacing (0);
+  mediaLayout->addWidget (m_mediaLabel, 0, Qt::AlignCenter);
 
   m_previousButton->setText (qt_translate ("上一步"));
   m_nextButton->setText (qt_translate ("下一步"));
@@ -423,9 +473,10 @@ TutorialBubble::TutorialBubble (QWidget* parent)
   auto* mainLayout= new QVBoxLayout (this);
   mainLayout->setContentsMargins (18, 18, 18, 18);
   mainLayout->setSpacing (12);
+  mainLayout->setSizeConstraint (QLayout::SetFixedSize);
   mainLayout->addWidget (m_titleLabel);
   mainLayout->addWidget (m_topTextLabel);
-  mainLayout->addWidget (m_mediaLabel);
+  mainLayout->addWidget (m_mediaContainer, 0, Qt::AlignHCenter);
   mainLayout->addWidget (m_bottomTextLabel);
   mainLayout->addLayout (footerLayout);
 
@@ -446,12 +497,6 @@ TutorialBubble::TutorialBubble (QWidget* parent)
       color: #334155;
       font-size: 13px;
       line-height: 1.5;
-    }
-    QLabel#tutorialMedia {
-      background-color: rgba(15, 23, 42, 0.04);
-      border: 1px solid rgba(24, 42, 67, 0.12);
-      border-radius: 10px;
-      padding: 4px;
     }
     QLabel#tutorialProgress {
       color: #6b7280;
@@ -488,7 +533,22 @@ TutorialBubble::TutorialBubble (QWidget* parent)
 void
 TutorialBubble::setStep (const TutorialStepConfig& step, int index, int total) {
   const QString mediaPath= resolveTutorialMediaPath (step.mediaPath);
-  const QSize   mediaSize (300, 180);
+  QSize         mediaSize (300, 180);
+
+  switch (step.bubbleSize) {
+  case TutorialBubbleSize::Small:
+    setFixedWidth (300);
+    mediaSize= QSize (240, 144);
+    break;
+  case TutorialBubbleSize::Medium:
+    setFixedWidth (360);
+    mediaSize= QSize (300, 180);
+    break;
+  case TutorialBubbleSize::Large:
+    setFixedWidth (440);
+    mediaSize= QSize (380, 228);
+    break;
+  }
 
   m_titleLabel->setText (step.title);
   m_topTextLabel->setText (step.topText);
@@ -505,18 +565,27 @@ TutorialBubble::setStep (const TutorialStepConfig& step, int index, int total) {
     }
 
     m_mediaLabel->clear ();
-    m_mediaLabel->setVisible (false);
-    m_mediaLabel->setFixedSize (QSize ());
+    m_mediaLabel->setFixedSize (0, 0);
+    m_mediaContainer->setVisible (false);
+    m_mediaContainer->setFixedSize (0, 0);
     m_currentMediaPath= mediaPath;
 
     if (!mediaPath.isEmpty ()) {
       if (mediaPath.endsWith (".gif", Qt::CaseInsensitive)) {
         m_mediaMovie= new QMovie (mediaPath, QByteArray (), this);
         if (m_mediaMovie->isValid ()) {
-          m_mediaMovie->setScaledSize (mediaSize);
           m_mediaLabel->setFixedSize (mediaSize);
-          m_mediaLabel->setMovie (m_mediaMovie);
-          m_mediaLabel->setVisible (true);
+          m_mediaContainer->setFixedSize (mediaSize);
+          m_mediaContainer->setVisible (true);
+          connect (m_mediaMovie, &QMovie::frameChanged, this,
+                   [this, mediaSize] (int) {
+                     if (m_mediaMovie == nullptr) return;
+                     const QPixmap frame= m_mediaMovie->currentPixmap ();
+                     if (frame.isNull ()) return;
+                     m_mediaLabel->setPixmap (
+                         frame.scaled (mediaSize, Qt::KeepAspectRatio,
+                                       Qt::SmoothTransformation));
+                   });
           m_mediaMovie->start ();
         }
         else {
@@ -532,7 +601,8 @@ TutorialBubble::setStep (const TutorialStepConfig& step, int index, int total) {
               mediaSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
           m_mediaLabel->setPixmap (scaledPixmap);
           m_mediaLabel->setFixedSize (mediaSize);
-          m_mediaLabel->setVisible (true);
+          m_mediaContainer->setFixedSize (mediaSize);
+          m_mediaContainer->setVisible (true);
         }
         else {
           m_currentMediaPath.clear ();
@@ -541,7 +611,12 @@ TutorialBubble::setStep (const TutorialStepConfig& step, int index, int total) {
     }
   }
   else if (!mediaPath.isEmpty ()) {
-    m_mediaLabel->setVisible (true);
+    m_mediaContainer->setVisible (true);
+  }
+  else {
+    m_mediaContainer->setVisible (false);
+    m_mediaContainer->setFixedSize (0, 0);
+    m_mediaLabel->setFixedSize (0, 0);
   }
 
   m_progressLabel->setText (
@@ -551,7 +626,7 @@ TutorialBubble::setStep (const TutorialStepConfig& step, int index, int total) {
 
 void
 TutorialBubble::setFirstStep (bool first) {
-  m_previousButton->setEnabled (!first);
+  m_previousButton->setVisible (!first);
 }
 
 void
@@ -652,18 +727,20 @@ TutorialOverlay::bubbleRectForPlacement (TutorialPlacement placement) const {
   QSize     size   = m_bubble->sizeHint ();
   QRect     safe   = rect ().adjusted (margin, margin, -margin, -margin);
 
-  if (!m_hasHighlight) {
-    QPoint center=
-        safe.center () - QPoint (size.width () / 2, size.height () / 2);
-    return QRect (center, size);
-  }
-
   auto clampRect= [&safe, &size] (QRect candidate) {
     int x= qBound (safe.left (), candidate.x (), safe.right () - size.width ());
     int y=
         qBound (safe.top (), candidate.y (), safe.bottom () - size.height ());
     return QRect (QPoint (x, y), size);
   };
+
+  if (!m_hasHighlight) {
+    QPoint center=
+        safe.center () - QPoint (size.width () / 2, size.height () / 2);
+    return clampRect (
+        QRect (center, size)
+            .translated (m_currentStep.offsetX, m_currentStep.offsetY));
+  }
 
   auto candidateFor= [this, &size, spacing] (TutorialPlacement p) {
     switch (p) {
@@ -703,11 +780,14 @@ TutorialOverlay::bubbleRectForPlacement (TutorialPlacement placement) const {
   }
 
   for (TutorialPlacement p : placements) {
-    QRect candidate= candidateFor (p);
+    QRect candidate= candidateFor (p).translated (m_currentStep.offsetX,
+                                                  m_currentStep.offsetY);
     if (safe.contains (candidate)) return candidate;
   }
 
-  return clampRect (candidateFor (placements.front ()));
+  return clampRect (
+      candidateFor (placements.front ())
+          .translated (m_currentStep.offsetX, m_currentStep.offsetY));
 }
 
 void
@@ -735,17 +815,6 @@ TutorialOverlay::paintEvent (QPaintEvent* event) {
   }
 
   painter.fillPath (overlayPath, QColor (10, 18, 28, 180));
-
-  if (m_hasHighlight) {
-    painter.setBrush (Qt::NoBrush);
-    QPen borderPen (QColor (255, 244, 214), 2);
-    painter.setPen (borderPen);
-    painter.drawRoundedRect (m_highlightRect, 14, 14);
-
-    QPen glowPen (QColor (255, 199, 94, 120), 4);
-    painter.setPen (glowPen);
-    painter.drawRoundedRect (m_highlightRect.adjusted (1, 1, -1, -1), 14, 14);
-  }
 }
 
 void
@@ -854,7 +923,7 @@ TutorialEngine::eventFilter (QObject* watched, QEvent* event) {
     case QEvent::LayoutRequest:
     case QEvent::WindowStateChange:
       updateOverlayGeometry ();
-      if (m_currentIndex >= 0) showStep (m_currentIndex, 0, 0, m_stepRequestId);
+      refreshCurrentStepGeometry ();
       break;
     case QEvent::Close:
       stop (TutorialFinishReason::HostClosed);
@@ -881,6 +950,32 @@ TutorialEngine::updateOverlayGeometry () {
 }
 
 void
+TutorialEngine::refreshCurrentStepGeometry () {
+  if (!isActive ()) return;
+  if (m_currentIndex < 0 || m_currentIndex >= m_config.steps.size ()) return;
+
+  const TutorialStepConfig& step= m_config.steps[m_currentIndex];
+  if (step.targetId.trimmed ().isEmpty ()) {
+    m_overlay->clearHighlight ();
+    m_overlay->show ();
+    m_overlay->raise ();
+    return;
+  }
+
+  QRect rect;
+  if (!m_registry.resolve (step.targetId, m_hostWindow, rect)) {
+    m_overlay->clearHighlight ();
+    m_overlay->show ();
+    m_overlay->raise ();
+    return;
+  }
+
+  m_overlay->setHighlightedRect (rect, step.highlightPadding);
+  m_overlay->show ();
+  m_overlay->raise ();
+}
+
+void
 TutorialEngine::showStep (int index, int retryCount, int fallbackDirection,
                           int requestId) {
   if (!isActive ()) return;
@@ -893,6 +988,19 @@ TutorialEngine::showStep (int index, int retryCount, int fallbackDirection,
 
   QRect                     rect;
   const TutorialStepConfig& step= m_config.steps[index];
+  if (step.targetId.trimmed ().isEmpty ()) {
+    m_overlay->setStep (step, index, m_config.steps.size ());
+    m_overlay->clearHighlight ();
+    m_overlay->show ();
+    m_overlay->raise ();
+    if (m_displayedIndex != index) {
+      executeOnEnter (step);
+      m_displayedIndex= index;
+    }
+    emit stepChanged (step.id, index, m_config.steps.size ());
+    return;
+  }
+
   if (!m_registry.resolve (step.targetId, m_hostWindow, rect)) {
     if (retryCount < kMaxResolveRetries) {
       QTimer::singleShot (

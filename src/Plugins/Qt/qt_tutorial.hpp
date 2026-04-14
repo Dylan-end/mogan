@@ -25,20 +25,24 @@ class QWheelEvent;
 namespace QWK {
 
 enum class TutorialPlacement { Auto, Top, Bottom, Left, Right };
+enum class TutorialBubbleSize { Small, Medium, Large };
 
 enum class TutorialFinishReason { Completed, Skipped, Cancelled, HostClosed };
 
 struct TutorialStepConfig {
-  QString           id;
-  QString           title;
-  QString           targetId;
-  TutorialPlacement placement       = TutorialPlacement::Auto;
-  int               highlightPadding= 8;
-  bool              skipIfMissing   = true;
-  QString           topText;
-  QString           mediaPath;
-  QString           bottomText;
-  QString           onEnterCommand;
+  QString            id;
+  QString            title;
+  QString            targetId;
+  TutorialPlacement  placement       = TutorialPlacement::Auto;
+  int                highlightPadding= 8;
+  bool               skipIfMissing   = true;
+  QString            topText;
+  QString            mediaPath;
+  QString            bottomText;
+  QString            onEnterCommand;
+  TutorialBubbleSize bubbleSize= TutorialBubbleSize::Medium;
+  int                offsetX   = 0;
+  int                offsetY   = 0;
 };
 
 struct TutorialFlowConfig {
@@ -86,6 +90,7 @@ signals:
 private:
   QLabel*      m_titleLabel;
   QLabel*      m_topTextLabel;
+  QWidget*     m_mediaContainer;
   QLabel*      m_mediaLabel;
   QLabel*      m_bottomTextLabel;
   QLabel*      m_progressLabel;
@@ -155,6 +160,7 @@ protected:
 
 private:
   void executeOnEnter (const TutorialStepConfig& step);
+  void refreshCurrentStepGeometry ();
   void updateOverlayGeometry ();
   void showStep (int index, int retryCount= 0, int fallbackDirection= 0,
                  int requestId= -1);
