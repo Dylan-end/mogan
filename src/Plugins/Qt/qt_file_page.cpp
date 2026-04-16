@@ -27,7 +27,9 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
+#include <QStringList>
 #include <QStyleOption>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include "qt_dpi_utils.hpp"
@@ -40,37 +42,38 @@ static const int MAX_RECENT_DOCS       = 10;
 static const int MAX_GLOBAL_RECENT_DOCS= 25;
 
 namespace {
-constexpr int kMainMargin         = 32;  // 主内容区外边距
-constexpr int kMainSpacing        = 24;  // 主纵向布局间距
-constexpr int kStyleCardWidth     = 100; // 样式卡片宽度
-constexpr int kStyleCardHeight    = 120; // 样式卡片高度
-constexpr int kStyleIconSize      = 64;  // 样式卡片图标尺寸
-constexpr int kStyleCardTopPadding= 12;  // 样式卡片顶部内边距
-constexpr int kStyleCardMargin    = 8;   // 样式卡片内边距
-constexpr int kStyleCardSpacing   = 4;   // 样式卡片内部控件间距
-constexpr int kStyleCardsSpacing  = 16;  // 样式卡片横向间距
-constexpr int kStyleCardRadius    = 8;   // 样式卡片圆角
-constexpr int kStyleIconRadius    = 8;   // 样式图标圆角
-constexpr int kSectionTitleFontPx = 16;  // 分区标题字号
-constexpr int kStyleIconFontPx    = 18;  // 样式图标字母字号
-constexpr int kStyleNameFontPx    = 12;  // 样式名称字号
-constexpr int kStyleBadgeFontPx   = 10;  // Default 徽标字号
-constexpr int kStyleBadgeRadius   = 8;   // Default 徽标圆角
-constexpr int kStyleBadgePadY     = 1;   // Default 徽标纵向内边距
-constexpr int kStyleBadgePadX     = 6;   // Default 徽标横向内边距
-constexpr int kRecentListRadius   = 8;   // Recent 列表圆角
-constexpr int kRecentItemHeight   = 64;  // Recent 列表项高度
-constexpr int kRecentItemRadius   = 4;   // Recent 列表项圆角
-constexpr int kRecentItemMarginX  = 4;   // Recent 列表项横向边距
-constexpr int kRecentItemMarginY  = 2;   // Recent 列表项纵向边距
-constexpr int kRecentItemPaddingX = 8;   // Recent 列表项横向内边距
-constexpr int kRecentItemPaddingY = 6;   // Recent 列表项纵向内边距
-constexpr int kRecentItemSpacing  = 3;   // Recent 名称与路径行间距
-constexpr int kRecentNameFontPx   = 15;  // Recent 文件名字号
-constexpr int kRecentPathFontPx   = 11;  // Recent 路径字号
-constexpr int kSelectedBorderPx   = 2;   // 卡片选中边框宽度
-constexpr int kSelectedRadius     = 6;   // 卡片选中边框圆角
-constexpr int kSelectedInset      = 1;   // 卡片选中边框内缩
+constexpr int kMainMargin         = 32;   // 主内容区外边距
+constexpr int kMainSpacing        = 24;   // 主纵向布局间距
+constexpr int kStyleCardWidth     = 100;  // 样式卡片宽度
+constexpr int kStyleCardHeight    = 120;  // 样式卡片高度
+constexpr int kStyleIconSize      = 64;   // 样式卡片图标尺寸
+constexpr int kStyleCardTopPadding= 12;   // 样式卡片顶部内边距
+constexpr int kStyleCardMargin    = 8;    // 样式卡片内边距
+constexpr int kStyleCardSpacing   = 4;    // 样式卡片内部控件间距
+constexpr int kStyleCardsSpacing  = 16;   // 样式卡片横向间距
+constexpr int kStyleCardRadius    = 8;    // 样式卡片圆角
+constexpr int kStyleIconRadius    = 8;    // 样式图标圆角
+constexpr int kSectionTitleFontPx = 16;   // 分区标题字号
+constexpr int kStyleIconFontPx    = 18;   // 样式图标字母字号
+constexpr int kStyleNameFontPx    = 12;   // 样式名称字号
+constexpr int kStyleBadgeFontPx   = 10;   // Default 徽标字号
+constexpr int kStyleBadgeRadius   = 8;    // Default 徽标圆角
+constexpr int kStyleBadgePadY     = 1;    // Default 徽标纵向内边距
+constexpr int kStyleBadgePadX     = 6;    // Default 徽标横向内边距
+constexpr int kRecentListRadius   = 8;    // Recent 列表圆角
+constexpr int kRecentItemHeight   = 64;   // Recent 列表项高度
+constexpr int kRecentItemRadius   = 4;    // Recent 列表项圆角
+constexpr int kRecentItemMarginX  = 4;    // Recent 列表项横向边距
+constexpr int kRecentItemMarginY  = 2;    // Recent 列表项纵向边距
+constexpr int kRecentItemPaddingX = 8;    // Recent 列表项横向内边距
+constexpr int kRecentItemPaddingY = 6;    // Recent 列表项纵向内边距
+constexpr int kRecentItemSpacing  = 3;    // Recent 名称与路径行间距
+constexpr int kRecentNameFontPx   = 15;   // Recent 文件名字号
+constexpr int kRecentPathFontPx   = 11;   // Recent 路径字号
+constexpr int kSelectedBorderPx   = 2;    // 卡片选中边框宽度
+constexpr int kSelectedRadius     = 6;    // 卡片选中边框圆角
+constexpr int kSelectedInset      = 1;    // 卡片选中边框内缩
+constexpr int kRecentRefreshMs    = 1000; // Recent 自动刷新周期
 } // namespace
 
 /******************************************************************************
@@ -210,9 +213,27 @@ QtFilePage::QtFilePage (QWidget* parent) : QWidget (parent) {
 
   setupUI ();
   loadRecentDocs ();
+
+  recentRefreshTimer_= new QTimer (this);
+  recentRefreshTimer_->setInterval (kRecentRefreshMs);
+  connect (recentRefreshTimer_, &QTimer::timeout, this,
+           &QtFilePage::refreshRecentDocs);
 }
 
 QtFilePage::~QtFilePage ()= default;
+
+void
+QtFilePage::showEvent (QShowEvent* event) {
+  QWidget::showEvent (event);
+  refreshRecentDocs ();
+  if (recentRefreshTimer_) recentRefreshTimer_->start ();
+}
+
+void
+QtFilePage::hideEvent (QHideEvent* event) {
+  if (recentRefreshTimer_) recentRefreshTimer_->stop ();
+  QWidget::hideEvent (event);
+}
 
 void
 QtFilePage::setupUI () {
@@ -331,14 +352,52 @@ getRecentDocsFilePath () {
   return QDir (configDir).filePath ("recent-files.json");
 }
 
+static QStringList
+getRecentDocPathsFromScheme () {
+  QStringList paths;
+  tmscm       result= eval_scheme ("(startup-tab-get-recent-docs)");
+  if (!tmscm_is_list (result)) return paths;
+
+  for (tmscm cur= result; !tmscm_is_null (cur); cur= tmscm_cdr (cur)) {
+    tmscm item= tmscm_car (cur);
+    if (!tmscm_is_string (item)) continue;
+    paths.append (QString::fromUtf8 (as_charp (tmscm_to_string (item))));
+  }
+  return paths;
+}
+
+static QDateTime
+readRecentOpenedAt (const QJsonObject& docObj, bool hasFilesField) {
+  if (hasFilesField) {
+    qint64    lastOpen= static_cast<qint64> (docObj["last_open"].toDouble ());
+    QDateTime openedAt= QDateTime::fromSecsSinceEpoch (lastOpen);
+    return openedAt.isValid () ? openedAt : QDateTime::currentDateTime ();
+  }
+
+  QDateTime openedAt=
+      QDateTime::fromString (docObj["opened_at"].toString (), Qt::ISODate);
+  return openedAt.isValid () ? openedAt : QDateTime::currentDateTime ();
+}
+
 void
 QtFilePage::loadRecentDocs () {
   recentDocs_.clear ();
   recentList_->clear ();
 
+  const QStringList recentPaths= getRecentDocPathsFromScheme ();
+
   QString filePath= getRecentDocsFilePath ();
   QFile   file (filePath);
   if (!file.open (QIODevice::ReadOnly)) {
+    for (const QString& path : recentPaths) {
+      if (path.isEmpty ()) continue;
+      RecentDoc recentDoc;
+      recentDoc.filePath= path;
+      recentDoc.fileName= QFileInfo (path).fileName ();
+      recentDoc.openedAt= QDateTime::currentDateTime ();
+      recentDocs_.append (recentDoc);
+      if (recentDocs_.size () >= MAX_RECENT_DOCS) break;
+    }
     renderRecentDocs ();
     return;
   }
@@ -346,44 +405,49 @@ QtFilePage::loadRecentDocs () {
   QByteArray    data= file.readAll ();
   QJsonDocument doc = QJsonDocument::fromJson (data);
   if (!doc.isObject ()) {
+    for (const QString& path : recentPaths) {
+      if (path.isEmpty ()) continue;
+      RecentDoc recentDoc;
+      recentDoc.filePath= path;
+      recentDoc.fileName= QFileInfo (path).fileName ();
+      recentDoc.openedAt= QDateTime::currentDateTime ();
+      recentDocs_.append (recentDoc);
+      if (recentDocs_.size () >= MAX_RECENT_DOCS) break;
+    }
     renderRecentDocs ();
     return;
   }
 
-  QJsonObject obj= doc.object ();
-  QJsonArray  recentArray;
-  if (obj.contains ("files")) {
-    recentArray= obj["files"].toArray ();
-  }
-  else {
-    recentArray= obj["recent_documents"].toArray ();
-  }
-
+  QJsonObject                 obj          = doc.object ();
+  const bool                  hasFilesField= obj.contains ("files");
+  const QJsonArray            recentArray  = hasFilesField
+                                                 ? obj["files"].toArray ()
+                                                 : obj["recent_documents"].toArray ();
+  QHash<QString, QJsonObject> recentByPath;
   for (const auto& val : recentArray) {
-    QJsonObject docObj= val.toObject ();
-    if (obj.contains ("files") && !docObj["show"].toBool (false)) continue;
+    const QJsonObject docObj= val.toObject ();
+    const QString     path  = docObj["path"].toString ();
+    if (!path.isEmpty ()) recentByPath.insert (path, docObj);
+  }
 
-    RecentDoc doc;
-    doc.filePath= docObj["path"].toString ();
-    doc.fileName= docObj["name"].toString ();
-    if (doc.fileName.isEmpty ()) {
-      doc.fileName= QFileInfo (doc.filePath).fileName ();
-    }
-    if (obj.contains ("files")) {
-      qint64 lastOpen= static_cast<qint64> (docObj["last_open"].toDouble ());
-      doc.openedAt   = QDateTime::fromSecsSinceEpoch (lastOpen);
-      if (!doc.openedAt.isValid ()) {
-        doc.openedAt= QDateTime::currentDateTime ();
-      }
+  for (const QString& path : recentPaths) {
+    if (path.isEmpty ()) continue;
+
+    RecentDoc recentDoc;
+    recentDoc.filePath= path;
+    if (recentByPath.contains (path)) {
+      const QJsonObject& docObj= recentByPath[path];
+      recentDoc.fileName       = docObj["name"].toString ();
+      recentDoc.openedAt       = readRecentOpenedAt (docObj, hasFilesField);
     }
     else {
-      doc.openedAt=
-          QDateTime::fromString (docObj["opened_at"].toString (), Qt::ISODate);
-      if (!doc.openedAt.isValid ()) {
-        doc.openedAt= QDateTime::currentDateTime ();
-      }
+      recentDoc.openedAt= QDateTime::currentDateTime ();
     }
-    recentDocs_.append (doc);
+    if (recentDoc.fileName.isEmpty ()) {
+      recentDoc.fileName= QFileInfo (path).fileName ();
+    }
+
+    recentDocs_.append (recentDoc);
     if (recentDocs_.size () >= MAX_RECENT_DOCS) break;
   }
 
