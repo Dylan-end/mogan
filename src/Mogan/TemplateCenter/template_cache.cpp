@@ -17,7 +17,9 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QStandardPaths>
+#include <QTimeZone>
 
 #include "image_cache_base.hpp"
 #include "sys_utils.hpp"
@@ -290,6 +292,149 @@ TemplateCache::cacheDirectory () const {
 QString
 TemplateCache::metadataCachePath () const {
   return QDir (cacheDirectory ()).filePath ("metadata.json");
+}
+
+QString
+TemplateCache::categoriesCachePath () const {
+  return QDir (cacheDirectory ()).filePath ("categories.json");
+}
+
+QList<TemplateCategory>
+TemplateCache::loadCategoriesCache () {
+  QList<TemplateCategory> categories;
+
+  QString cachePath= categoriesCachePath ();
+  if (!QFile::exists (cachePath)) {
+    return categories;
+  }
+
+  // Use lock file to prevent concurrent read/write conflicts
+  QString   lockPath= cachePath + ".lock";
+  QLockFile lockFile (lockPath);
+  if (!lockFile.tryLock (5000)) { // Wait up to 5 seconds
+    qWarning () << "Could not acquire lock for categories cache read:"
+                << lockPath;
+    return categories;
+  }
+
+  QFile file (cachePath);
+  if (!file.open (QIODevice::ReadOnly)) {
+    qWarning () << "Failed to open categories cache:" << cachePath
+                << "Error:" << file.errorString ();
+    return categories;
+  }
+
+  QByteArray      data= file.readAll ();
+  QJsonParseError parseError;
+  QJsonDocument   doc= QJsonDocument::fromJson (data, &parseError);
+  if (doc.isNull () || !doc.isObject ()) {
+    qWarning () << "Invalid categories cache format:"
+                << parseError.errorString () << "at offset"
+                << parseError.offset;
+    // Remove corrupted cache file to trigger regeneration
+    file.close ();
+    QFile::remove (cachePath);
+    return categories;
+  }
+
+  QJsonObject root= doc.object ();
+
+  // Check cache expiration (24 hours) - using UTC for timezone safety
+  QString   lastUpdatedStr= root.value ("lastUpdated").toString ();
+  QDateTime lastUpdated   = QDateTime::fromString (lastUpdatedStr, Qt::ISODate);
+  if (lastUpdated.isValid ()) {
+    // Convert to UTC for consistent comparison across timezones
+    lastUpdated.setTimeZone (QTimeZone::UTC);
+    qint64 hoursSinceUpdate=
+        lastUpdated.secsTo (QDateTime::currentDateTimeUtc ()) / 3600;
+    if (hoursSinceUpdate >= CATEGORY_CACHE_EXPIRY_HOURS) {
+      qDebug () << "Categories cache expired (" << hoursSinceUpdate
+                << "hours old), triggering refresh";
+      return categories; // Return empty to trigger refresh
+    }
+  }
+
+  QJsonArray categoriesArray= root.value ("categories").toArray ();
+
+  for (const auto& catValue : categoriesArray) {
+    QJsonObject catObj= catValue.toObject ();
+
+    TemplateCategory category;
+    category.id         = catObj.value ("id").toString ();
+    category.name       = catObj.value ("name").toString ();
+    category.description= catObj.value ("description").toString ();
+    category.icon       = catObj.value ("icon").toString ();
+    category.order      = catObj.value ("order").toInt ();
+
+    if (!category.id.isEmpty () && !category.name.isEmpty ()) {
+      categories.append (category);
+    }
+    else {
+      qWarning () << "Skipping invalid category: missing id or name. ID:"
+                  << category.id << "Name:" << category.name;
+    }
+  }
+
+  // Sort by order
+  std::sort (categories.begin (), categories.end (),
+             [] (const TemplateCategory& a, const TemplateCategory& b) {
+               return a.order < b.order;
+             });
+
+  qDebug () << "Loaded" << categories.size () << "categories from cache";
+  return categories;
+}
+
+void
+TemplateCache::saveCategoriesCache (const QList<TemplateCategory>& categories) {
+  QJsonObject root;
+  root.insert ("version", "1.0");
+  // Use UTC time for timezone safety
+  root.insert ("lastUpdated",
+               QDateTime::currentDateTimeUtc ().toString (Qt::ISODate));
+
+  QJsonArray categoriesArray;
+  for (const auto& cat : categories) {
+    QJsonObject catObj;
+    catObj.insert ("id", cat.id);
+    catObj.insert ("name", cat.name);
+    catObj.insert ("description", cat.description);
+    catObj.insert ("icon", cat.icon);
+    catObj.insert ("order", cat.order);
+    categoriesArray.append (catObj);
+  }
+  root.insert ("categories", categoriesArray);
+
+  QJsonDocument doc (root);
+
+  QString cachePath= categoriesCachePath ();
+
+  // Use lock file to prevent concurrent write conflicts
+  QString   lockPath= cachePath + ".lock";
+  QLockFile lockFile (lockPath);
+  if (!lockFile.tryLock (5000)) { // Wait up to 5 seconds
+    qWarning () << "Could not acquire lock for categories cache write:"
+                << lockPath;
+    return;
+  }
+
+  QFile file (cachePath);
+  if (!file.open (QIODevice::WriteOnly | QIODevice::Truncate)) {
+    qWarning () << "Failed to write categories cache:" << cachePath
+                << "Error:" << file.errorString ();
+    return;
+  }
+
+  qint64 bytesWritten= file.write (doc.toJson (QJsonDocument::Compact));
+  if (bytesWritten == -1) {
+    qWarning () << "Failed to write categories cache data:"
+                << file.errorString ();
+    file.close ();
+    QFile::remove (cachePath);
+  }
+  else {
+    qDebug () << "Saved" << categories.size () << "categories to cache";
+  }
 }
 
 QString
