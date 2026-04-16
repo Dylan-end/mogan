@@ -1,4 +1,4 @@
-<TeXmacs|2.1.2>
+<TeXmacs|2.1.4>
 
 <style|<tuple|source|std>>
 
@@ -7,7 +7,7 @@
     <compound|src-package|fish|1.0>
 
     <\src-purpose>
-      fish Language
+      FISH Language support for TeXmacs
     </src-purpose>
   </src-title>>
 
@@ -29,4 +29,3 @@
     <associate|sfactor|5>
   </collection>
 </initial>
-

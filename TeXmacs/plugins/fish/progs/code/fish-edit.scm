@@ -10,119 +10,254 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;
-;;; DESCRIPTION:
-;;;   This module provides editing functionalities for fish language within
-;;;   TeXmacs. It defines language-specific behaviors such as indentation,
-;;;   commenting, and paste operations for fish code snippets.
-;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; 定义模块，使用 prog-edit 和 fish-mode 模块
 (texmacs-module (code fish-edit)
   (:use (prog prog-edit)
-    (code fish-mode)))
+        (code fish-mode)
+  ) ;:use
+) ;texmacs-module
 
-;;------------------------------------------------------------------------------
-;; 缩进设置
-;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Indentation policy
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; 定义fish代码的制表符停止位为4个空格（符合fish标准）
+(tm-define (fish-tabstop) 4)
+
 (tm-define (get-tabstop)
   (:mode in-prog-fish?)
-  4)
+  (fish-tabstop)
+) ;tm-define
 
-;; 定义fish特定的关键字，这些关键字后面需要增加缩进
-(define fish-increase-indent-keys
-  '("define" "if" "loop" "case" "caseof" "section" "command"))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Helpers
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; 定义fish特定的配对关键字，这些关键字会减少缩进
-(define fish-decrease-indent-keys
-  '("else" "case"))
+(define fish-block-openers
+  '("case" "command" "define" "else" "for" "foreach" "if" "loop"
+    "section" "struct" "structure" "while")
+) ;define
 
-;; 定义fish特定的结束关键字，这些关键字会减少缩进
-(define fish-end-keys
-  '("end" "endif" "endloop" "endsection" "endcase" "endcommand"))
+(define fish-block-closers
+  '("end" "end_if" "endif" "end_loop" "end_section"
+    "endcase" "endcommand" "endloop" "endsection")
+) ;define
 
-;; 去除字符串右侧的空白字符
-(define (string-strip-right s)
-  (with char-set:not-whitespace (char-set-complement char-set:whitespace)
-    (with n (string-length s)
-      (with r (or (string-rindex s char-set:not-whitespace) n)
-        (string-take s (min n (+ 1 r)))))))
+(define fish-block-middle
+  '("case" "else")
+) ;define
 
-;; 检查字符串是否以特定关键字结尾
-(define (ends-with-keyword? s keys)
-  (and (nnull? keys)
-    (or (string-ends? s (car keys))
-      (ends-with-keyword? s (cdr keys)))))
+(define (fish-word-in? w lst)
+  (cond
+    ((null? lst) #f)
+    ((== w (car lst)) #t)
+    (else (fish-word-in? w (cdr lst)))
+  ) ;cond
+) ;define
 
-;; 检查字符串是否以特定关键字开头
-(define (starts-with-keyword? s keys)
-  (and (nnull? keys)
-    (or (string-starts? s (string-append (car keys) " "))
-      (starts-with-keyword? s (cdr keys)))))
+(define (fish-string-prefix? s p)
+  (and (>= (string-length s) (string-length p))
+       (== (substring s 0 (string-length p)) p)
+  ) ;and
+) ;define
 
-;; 定义fish代码的缩进计算函数
+(define (fish-trim-left s)
+  (let loop ((i 0) (n (string-length s)))
+    (if (or (>= i n)
+            (not (char-whitespace? (string-ref s i))))
+        (substring s i n)
+        (loop (+ i 1) n)
+    ) ;if
+  ) ;let
+) ;define
+
+(define (fish-trim-right s)
+  (let loop ((i (- (string-length s) 1)))
+    (if (< i 0) ""
+        (if (char-whitespace? (string-ref s i))
+            (loop (- i 1))
+            (substring s 0 (+ i 1))
+        ) ;if
+    ) ;if
+  ) ;let
+) ;define
+
+(define (fish-trim s)
+  (fish-trim-right (fish-trim-left s))
+) ;define
+
+(define (fish-word-char? c)
+  (or (char-alphabetic? c)
+      (char-numeric? c)
+      (== c #\_)
+  ) ;or
+) ;define
+
+(define (fish-first-word s)
+  (let* ((t (fish-trim-left s))
+         (n (string-length t)))
+    (let loop ((i 0))
+      (if (or (>= i n)
+              (not (fish-word-char? (string-ref t i))))
+          (if (<= i 0) "" (substring t 0 i))
+          (loop (+ i 1))
+      ) ;if
+    ) ;let
+  ) ;let*
+) ;define
+
+(define (fish-line-continues? line)
+  (let* ((t (fish-trim-right line))
+         (n (string-length t)))
+    (and (> n 0)
+         (or (and (>= n 3)
+                  (== (substring t (- n 3) n) "..."))
+             (== (string-ref t (- n 1)) #\&)
+         ) ;or
+    ) ;and
+  ) ;let*
+) ;define
+
+(define (fish-line-opens-block? line)
+  (let* ((t (fish-trim line))
+         (w (fish-first-word t)))
+    (or (and (!= w "")
+             (or (fish-word-in? w fish-block-openers)
+                 (== w "caseof"))
+             ) ;or
+        (fish-string-prefix? t "if ")
+        (== t "if")
+        (fish-string-prefix? t "else if ")
+        (and (or (fish-string-prefix? t "if ")
+                 (fish-string-prefix? t "else if ")
+                 (fish-string-prefix? t "caseof "))
+             (or (== t "then")
+                 (fish-string-prefix? t "then ")
+                 (and (>= (string-length t) 4)
+                      (== (substring t (- (string-length t) 4)
+                                     (string-length t))
+                          "then"
+                      ) ;==
+                 ) ;and
+             ) ;or
+        ) ;and
+    ) ;or
+  ) ;let*
+) ;define
+
+(define (fish-line-starts-with-outdent? line)
+  (let ((w (fish-first-word line)))
+    (or (fish-word-in? w fish-block-closers)
+        (fish-word-in? w fish-block-middle)
+    ) ;or
+  ) ;let
+) ;define
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Line access
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (fish-get-line row)
+  (let ((s (program-row row)))
+    (if s s "")
+  ) ;let
+) ;define
+
+(define (fish-prev-nonempty-row row)
+  (let loop ((r (- row 1)))
+    (if (< r 0) -1
+        (let* ((line (fish-get-line r))
+               (t (fish-trim line)))
+          (if (== t "") (loop (- r 1)) r)
+        ) ;let*
+    ) ;if
+  ) ;let
+) ;define
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Indentation computation
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(define (fish-indent-level-from-prev row)
+  (let* ((pr (fish-prev-nonempty-row row)))
+    (if (< pr 0) 0
+        (let* ((pline (fish-get-line pr))
+               (base (string-get-indent pline))
+               (tab (get-tabstop))
+               (inc? (or (fish-line-continues? pline)
+                         (fish-line-opens-block? pline)))
+               ) ;inc?
+          (+ base (if inc? tab 0))
+        ) ;let*
+    ) ;if
+  ) ;let*
+) ;define
+
 (tm-define (program-compute-indentation doc row col)
   (:mode in-prog-fish?)
-  (if (<= row 0) 0
-    (let* ((prev-row (- row 1))
-           (prev-line (program-row prev-row))
-           (stripped-prev (string-strip-right (if prev-line prev-line "")))
-           (prev-indent (string-get-indent stripped-prev))
-           (tab-width (get-tabstop)))
-      (cond
-        ;; 如果前行以增加缩进的关键字结尾，则当前行应增加缩进
-        ((ends-with-keyword? stripped-prev fish-increase-indent-keys)
-          (+ prev-indent tab-width))
-        ;; 如果当前行以减少缩进的关键字开头，则减少缩进
-        ((starts-with-keyword? (program-row row) fish-decrease-indent-keys)
-          (max 0 (- prev-indent tab-width)))
-        ;; 如果当前行以结束关键字开头，则减少缩进
-        ((starts-with-keyword? (program-row row) fish-end-keys)
-          (max 0 (- prev-indent tab-width)))
-        ;; 否则保持前行的缩进
-        (else prev-indent)))))
+  (let* ((tab (get-tabstop))
+         (line (fish-get-line row))
+         (base (fish-indent-level-from-prev row)))
+    (if (fish-line-starts-with-outdent? line)
+        (max 0 (- base tab))
+        base
+    ) ;if
+  ) ;let*
+) ;tm-define
 
-;;------------------------------------------------------------------------------
-;; 自动插入、高亮和选择括号和引号
-;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Commenting
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(tm-define (program-comment-start)
+  (:mode in-prog-fish?)
+  ";"
+) ;tm-define
+
+(tm-define (program-toggle-comment)
+  (:mode in-prog-fish?)
+  (prog-toggle-line-comment ";")
+) ;tm-define
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Paste import hook
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(tm-define (kbd-paste)
+  (:mode in-prog-fish?)
+  (clipboard-paste-import "fish" "primary")
+) ;tm-define
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Brackets / quotes
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (tm-define (fish-bracket-open lbr rbr)
-  ;; 插入一对括号或引号，并将光标定位在中间
-  (bracket-open lbr rbr "\\"))
+  (bracket-open lbr rbr "\\")
+) ;tm-define
 
 (tm-define (fish-bracket-close lbr rbr)
-  ;; 处理闭合括号或引号，并正确放置光标位置
-  (bracket-close lbr rbr "\\"))
+  (bracket-close lbr rbr "\\")
+) ;tm-define
 
 (tm-define (notify-cursor-moved status)
   (:require prog-highlight-brackets?)
   (:mode in-prog-fish?)
-  ;; 当光标移动时高亮匹配的括号
-  (select-brackets-after-movement "([{" ")]}" "\\"))
+  (select-brackets-after-movement "([{" ")]}" "\\")
+) ;tm-define
 
-;;------------------------------------------------------------------------------
-;; 粘贴操作
-;;
-
-;; 定义fish代码环境中的粘贴操作，使用fish格式导入剪贴板内容
-(tm-define (kbd-paste)
-  (:mode in-prog-fish?)
-  (clipboard-paste-import "fish" "primary"))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Keyboard mappings
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (kbd-map
   (:mode in-prog-fish?)
-  ;; fish编程模式下的键盘快捷键
-  ("A-tab" (insert-tabstop))                 ;; Alt+Tab：插入制表符
-  ("cmd S-tab" (remove-tabstop))             ;; Cmd+Shift+Tab：移除制表符
-  ("{" (fish-bracket-open "{" "}" ))       ;; 自动插入匹配的大括号
-  ("}" (fish-bracket-close "{" "}" ))      ;; 处理闭合大括号
-  ("(" (fish-bracket-open "(" ")" ))       ;; 自动插入匹配的小括号
-  (")" (fish-bracket-close "(" ")" ))      ;; 处理闭合小括号
-  ("[" (fish-bracket-open "[" "]" ))       ;; 自动插入匹配的方括号
-  ("]" (fish-bracket-close "[" "]" ))      ;; 处理闭合方括号
-  ("\"" (fish-bracket-open "\"" "\"" ))    ;; 自动插入匹配的双引号
-  ("'" (fish-bracket-open "'" "'" )))      ;; 自动插入匹配的单引号
+  ("A-tab" (insert-tabstop))
+  ("cmd S-tab" (remove-tabstop))
+  ("{" (fish-bracket-open "{" "}" ))
+  ("}" (fish-bracket-close "{" "}" ))
+  ("(" (fish-bracket-open "(" ")" ))
+  (")" (fish-bracket-close "(" ")" ))
+  ("[" (fish-bracket-open "[" "]" ))
+  ("]" (fish-bracket-close "[" "]" ))
+  ("\"" (fish-bracket-open "\"" "\"" ))
+  ("'" (fish-bracket-open "'" "'" ))
+) ;kbd-map

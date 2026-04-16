@@ -10,59 +10,41 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;;
-;;; DESCRIPTION:
-;;;   This module defines the format conversion for fish files. It specifies
-;;;   how to convert between TeXmacs document tree format and fish source
-;;;   code format, allowing users to import and export fish code.
-;;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-;; 定义fish格式模块
 (texmacs-module (data fish))
 
-;;------------------------------------------------------------------------------
-;; 格式定义
-;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; FISH source files
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; 定义fish格式，指定名称和文件后缀
 (define-format fish
-  (:name "fish source code")
-  (:suffix "fish"))
+  (:name "FISH source code")
+  (:suffix "fis" "FIS")
+) ;define-format
 
-;;------------------------------------------------------------------------------
-;; 转换函数定义
-;;
-
-;; 定义从TeXmacs格式转换为fish格式的函数
 (define (texmacs->fish x . opts)
-  (texmacs->verbatim x (acons "texmacs->verbatim:encoding" "SourceCode" '())))
+  (texmacs->verbatim x (acons "texmacs->verbatim:encoding" "SourceCode" '()))
+) ;define
 
-;; 定义从fish格式转换为TeXmacs格式的函数
 (define (fish->texmacs x . opts)
-  (code->texmacs x))
+  (code->texmacs x)
+) ;define
 
-;; 定义从fish代码片段转换为TeXmacs格式的函数
 (define (fish-snippet->texmacs x . opts)
-  (code-snippet->texmacs x))
+  (code-snippet->texmacs x)
+) ;define
 
-;;------------------------------------------------------------------------------
-;; 转换器注册
-;;
-
-;; 注册TeXmacs文档树到fish文档的转换器
 (converter texmacs-tree fish-document
-  (:function texmacs->fish))
+  (:function texmacs->fish)
+) ;converter
 
-;; 注册fish文档到TeXmacs文档树的转换器
 (converter fish-document texmacs-tree
-  (:function fish->texmacs))
+  (:function fish->texmacs)
+) ;converter
 
-;; 注册TeXmacs文档树到fish代码片段的转换器
 (converter texmacs-tree fish-snippet
-  (:function texmacs->fish))
+  (:function texmacs->fish)
+) ;converter
 
-;; 注册fish代码片段到TeXmacs文档树的转换器
 (converter fish-snippet texmacs-tree
-  (:function fish-snippet->texmacs))
+  (:function fish-snippet->texmacs)
+) ;converter

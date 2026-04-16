@@ -1658,6 +1658,124 @@
 
     model save 'excavation'
   </fish-code>
+
+  [Supplemented on 2026/04/15]
+
+  Code 48
+
+  <\fish-code>
+    model new
+
+    \;
+
+    fish define inspect_runtime
+
+    \ \ \ \ local cwd = system.directory.current
+
+    \ \ \ \ local lower_files = file.all('*.fis')
+
+    \ \ \ \ local upper_files = file.all("*.FIS")
+
+    \ \ \ \ local major = version.fish.major
+
+    \ \ \ \ local total = math.abs(-5) + list.sum(list.range(1,4))
+
+    \ \ \ \ io.out(string.build('cwd=', cwd))
+
+    \ \ \ \ io.out(string.build('fis=', list.size(lower_files)))
+
+    \ \ \ \ io.out(string.build('FIS=', list.size(upper_files)))
+
+    \ \ \ \ io.out(string.build('major=', major))
+
+    \ \ \ \ io.out(string.build('total=', total))
+
+    end
+
+    \;
+
+    [inspect_runtime]
+
+    \;
+
+    program return
+  </fish-code>
+
+  Code 49
+
+  <\fish-code>
+    fish define scan_points(points)
+
+    \ \ \ \ local total = 0.0
+
+    \ \ \ \ local weights = list
+
+    \ \ \ \ loop foreach local pnt points
+
+    \ \ \ \ \ \ \ \ total += pnt-\<gtr\>x + pnt-\<gtr\>y + pnt-\<gtr\>z
+
+    \ \ \ \ endloop
+
+    \ \ \ \ weights =:: list.range(1,10)
+
+    \ \ \ \ weights +=:: list.sequence(11,12,13)
+
+    \ \ \ \ return total
+
+    end
+  </fish-code>
+
+  Code 50
+
+  <\fish-code>
+    fish define run_startup
+
+    \ \ \ \ command
+
+    \ \ \ \ \ \ \ \ model new
+
+    \ \ \ \ \ \ \ \ program call 'startup.fis'
+
+    \ \ \ \ \ \ \ \ fish list
+
+    \ \ \ \ \ \ \ \ history list
+
+    \ \ \ \ \ \ \ \ model save 'checkpoint'
+
+    \ \ \ \ endcommand
+
+    end
+  </fish-code>
+
+  Code 51
+
+  <\fish-code>
+    fish define control_aliases(flag)
+
+    \ \ \ \ section
+
+    \ \ \ \ \ \ \ \ if flag then
+
+    \ \ \ \ \ \ \ \ \ \ \ \ loop while flag > 0
+
+    \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ flag -= 1
+
+    \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ if flag = 2 then
+
+    \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ exit_loop
+
+    \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ \ end_if
+
+    \ \ \ \ \ \ \ \ \ \ \ \ end_loop
+
+    \ \ \ \ \ \ \ \ else
+
+    \ \ \ \ \ \ \ \ \ \ \ \ exit_section
+
+    \ \ \ \ \ \ \ \ end_section
+
+    end
+  </fish-code>
 </body>
 
 <\initial>
