@@ -24,8 +24,10 @@
 
 // Scheme integration for loading local config
 #include "s7_tm.hpp"
+#include "sys_utils.hpp"
 #include "tm_file.hpp"
-#include "tm_sys_utils.hpp"
+
+#include "image_cache_base.hpp"
 
 // Singleton instance
 static TemplateManager* g_instance= nullptr;
@@ -485,9 +487,13 @@ TemplateManager::mergeMetadata (
 
 QString
 TemplateManager::localTemplatesDir () const {
-  QString dataDir=
-      QStandardPaths::writableLocation (QStandardPaths::AppDataLocation);
-  return QDir (dataDir).filePath ("templates");
+  // Use TEXMACS_HOME_PATH for consistency with other caches
+  QString dataDir= ImageCacheUtils::getEnvQString ("TEXMACS_HOME_PATH");
+  if (dataDir.isEmpty ()) {
+    // Fallback to AppDataLocation if TEXMACS_HOME_PATH is not set
+    dataDir= QStandardPaths::writableLocation (QStandardPaths::AppDataLocation);
+  }
+  return QDir (dataDir).filePath ("system/templates");
 }
 
 QString
