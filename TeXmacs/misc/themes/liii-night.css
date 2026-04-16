@@ -1072,14 +1072,27 @@ QLabel#startup-tab-page-desc {
 
 /* 模板使用按钮 - Template Use Button */
 QPushButton#template-use-btn {
-  background-color: #4CAF50;
   color: white;
   font-weight: bold;
   border: none;
 }
 
-QPushButton#template-use-btn:hover {
-  background-color: #45a049;
+QWidget#centralWidget QPushButton#template-use-btn {
+  background-color: #2791ad;
+}
+
+QWidget#centralWidget QPushButton#template-use-btn:hover {
+  background-color: #215a6a;
+}
+
+QWidget#centralWidget QPushButton#template-cancel-btn {
+  background-color: #4e4e4e;
+  color: #ffffff;
+  font-weight: bold;
+}
+
+QWidget#centralWidget QPushButton#template-cancel-btn:hover {
+  background-color: #6f6f6f;
 }
 
 QLabel#template-preview-desc {
@@ -1160,4 +1173,33 @@ QLabel#style-card-name {
 
 QLabel#style-card-badge {
   color: #ffffff;
+}
+
+/****************************************************************************
+* PDF Preview Widget 样式
+****************************************************************************/
+QPushButton#pdf-preview-nav-btn {
+  border: none;
+  color: white;
+  font-weight: bold;
+}
+
+QWidget#centralWidget QPushButton#pdf-preview-nav-btn {
+  background: #6d6d6d;
+}
+
+QPushButton#pdf-preview-nav-btn:disabled {
+  color: #a0a0a0;
+}
+
+QLabel#pdf-preview-page-indicator {
+  color: white;
+}
+
+QWidget#centralWidget QLabel#pdf-preview-page-indicator {
+  background: #6d6d6d;
+}
+
+QLabel#pdf-preview-label {
+  border: 1px solid #4c4c4c;
 }

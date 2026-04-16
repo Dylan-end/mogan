@@ -22,6 +22,7 @@
 #include <QPointer>
 #include <QProgressDialog>
 #include <QPushButton>
+#include <QResizeEvent>
 #include <QScrollArea>
 #include <QShowEvent>
 #include <QStyle>
@@ -36,25 +37,24 @@
 #include "thumbnail_cache.hpp"
 
 namespace {
-// 预览图片尺寸
-constexpr int PREVIEW_IMAGE_WIDTH = 550;
-constexpr int PREVIEW_IMAGE_HEIGHT= 300;
+// 预览图片尺寸（增大预览区域）
+constexpr int PREVIEW_IMAGE_WIDTH= 400;
 
-// 缩略图尺寸
-constexpr int THUMBNAIL_WIDTH = 196;
-constexpr int THUMBNAIL_HEIGHT= 110;
+// 缩略图尺寸（使用2x尺寸以便在高分屏上显示清晰）
+constexpr int THUMBNAIL_WIDTH = 240;
+constexpr int THUMBNAIL_HEIGHT= 135;
 
-constexpr int kPageMargin          = 32;  // 页面边距
+constexpr int kPageMargin          = 16;  // 页面边距（减小边白）
 constexpr int kPageSpacing         = 24;  // 页面主布局间距
 constexpr int kCategorySpacing     = 8;   // 分类按钮间距
 constexpr int kGridSpacing         = 20;  // 模板网格间距
-constexpr int kCardWidth           = 220; // 模板卡片宽度
-constexpr int kCardHeight          = 200; // 模板卡片高度
+constexpr int kCardWidth           = 264; // 模板卡片宽度
+constexpr int kCardHeight          = 220; // 模板卡片高度
 constexpr int kCardMargin          = 12;  // 卡片内边距
 constexpr int kCardSpacing         = 8;   // 卡片内部间距
 constexpr int kNameLabelMaxHeight  = 40;  // 模板名称最大高度
-constexpr int kPreviewDialogMinW   = 600; // 预览弹窗最小宽度
-constexpr int kPreviewDialogMinH   = 500; // 预览弹窗最小高度
+constexpr int kPreviewDialogMinW   = 800; // 预览弹窗最小宽度
+constexpr int kPreviewDialogMinH   = 600; // 预览弹窗最小高度
 constexpr int kPreviewLayoutSpacing= 16;  // 预览弹窗布局间距
 constexpr int kPreviewLayoutMargin = 24;  // 预览弹窗布局边距
 constexpr int kPageTitleFontPx     = 24;  // 页面标题字号
@@ -170,7 +170,7 @@ QTTemplatePage::setupUI () {
   loadingLabel->setObjectName ("startup-tab-loading");
   loadingLabel->setAlignment (Qt::AlignCenter);
   DpiUtils::applyScaledFont (loadingLabel, kLoadingFontPx);
-  gridLayout_->addWidget (loadingLabel, 0, 0, 1, 3);
+  gridLayout_->addWidget (loadingLabel, 0, 0, 1, 6);
 }
 
 void
@@ -213,7 +213,8 @@ QTTemplatePage::setupCategoryBar () {
   QList<TemplateCategory> categories= templateManager_->categories ();
   bool hasMatchedCurrentCategory    = currentCategory_.isEmpty ();
   for (const auto& cat : categories) {
-    QPushButton* btn= new QPushButton (cat.name, categoryBar_);
+    QPushButton* btn=
+        new QPushButton (qt_translate (from_qstring (cat.name)), categoryBar_);
     btn->setObjectName ("startup-tab-category-btn");
     btn->setCheckable (true);
     btn->setChecked (cat.id == currentCategory_);
@@ -240,6 +241,25 @@ QTTemplatePage::setupCategoryBar () {
 void
 QTTemplatePage::onCategoriesLoaded () {
   setupCategoryBar ();
+}
+
+int
+QTTemplatePage::calculateColumnCount () const {
+  if (!scrollArea_) return 4;
+
+  // Calculate available width for grid
+  int availableWidth= scrollArea_->viewport ()->width ();
+  int cardWidth     = DpiUtils::scaled (kCardWidth);
+  int spacing       = DpiUtils::scaled (kGridSpacing);
+
+  // Each card takes: card width + spacing (except last in row)
+  int cardSpace= cardWidth + spacing;
+
+  // Calculate max columns that fit
+  int columns= (availableWidth + spacing) / cardSpace;
+
+  // Clamp between 1 and 6
+  return qBound (1, columns, 6);
 }
 
 void
@@ -275,7 +295,7 @@ QTTemplatePage::refreshTemplateGrid (const QString& category) {
   if (!templateManager_ || !templateManager_->isInitialized ()) {
     QLabel* label= new QLabel (qt_translate ("Initializing..."), gridWidget_);
     label->setAlignment (Qt::AlignCenter);
-    gridLayout_->addWidget (label, 0, 0, 1, 3);
+    gridLayout_->addWidget (label, 0, 0, 1, 6);
     return;
   }
 
@@ -292,9 +312,12 @@ QTTemplatePage::refreshTemplateGrid (const QString& category) {
     QLabel* label=
         new QLabel (qt_translate ("No templates available."), gridWidget_);
     label->setAlignment (Qt::AlignCenter);
-    gridLayout_->addWidget (label, 0, 0, 1, 3);
+    gridLayout_->addWidget (label, 0, 0, 1, 6);
     return;
   }
+
+  // Calculate columns based on available width
+  currentColumnCount_= calculateColumnCount ();
 
   // Add template cards
   int row= 0, col= 0;
@@ -303,7 +326,7 @@ QTTemplatePage::refreshTemplateGrid (const QString& category) {
     gridLayout_->addWidget (card, row, col);
 
     col++;
-    if (col >= 3) {
+    if (col >= currentColumnCount_) {
       col= 0;
       row++;
     }
@@ -419,12 +442,16 @@ QTTemplatePage::processThumbnailQueue () {
           QByteArray data= reply->readAll ();
           QImage     image;
           if (image.loadFromData (data)) {
-            // Scale to target size
-            QSize targetSize (DpiUtils::scaled (THUMBNAIL_WIDTH),
-                              DpiUtils::scaled (THUMBNAIL_HEIGHT));
-            image= image.scaled (targetSize.width (), targetSize.height (),
-                                 Qt::KeepAspectRatio, Qt::SmoothTransformation);
-            QPixmap pixmap= QPixmap::fromImage (image);
+            // Get device pixel ratio for high-DPI displays
+            qreal dpr= req.label->devicePixelRatioF ();
+            // Scale to target size considering DPR for crisp display
+            int targetWidth = DpiUtils::scaled (THUMBNAIL_WIDTH);
+            int targetHeight= DpiUtils::scaled (THUMBNAIL_HEIGHT);
+            image           = image.scaled (qRound (targetWidth * dpr),
+                                            qRound (targetHeight * dpr),
+                                            Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            QPixmap pixmap  = QPixmap::fromImage (image);
+            pixmap.setDevicePixelRatio (dpr);
 
             // Update UI
             req.label->setPixmap (pixmap);
@@ -434,6 +461,8 @@ QTTemplatePage::processThumbnailQueue () {
             req.label->style ()->polish (req.label);
 
             // Store in cache for future use
+            QSize targetSize (DpiUtils::scaled (THUMBNAIL_WIDTH),
+                              DpiUtils::scaled (THUMBNAIL_HEIGHT));
             ThumbnailCache::instance ()->put (req.url, targetSize, pixmap);
           }
           else {
@@ -516,6 +545,9 @@ QTTemplatePage::showTemplatePreview (const QString& templateId) {
 
   // Preview area using reusable PDF preview widget
   QTPdfPreviewWidget* previewWidget= new QTPdfPreviewWidget (dialog);
+  // 设置固定尺寸，确保无内容时也有足够显示区域 (A4比例)
+  previewWidget->setFixedSize (DpiUtils::scaled (PREVIEW_IMAGE_WIDTH * 1.414),
+                               DpiUtils::scaled (PREVIEW_IMAGE_WIDTH));
 
   // Load preview (PDF or image)
   if (!tmpl->previewUrl.isEmpty ()) {
@@ -525,9 +557,7 @@ QTTemplatePage::showTemplatePreview (const QString& templateId) {
     }
     else {
       // 使用QTPdfPreviewWidget加载图片预览
-      previewWidget->loadImageFromUrl (
-          tmpl->previewUrl, QSize (DpiUtils::scaled (PREVIEW_IMAGE_WIDTH),
-                                   DpiUtils::scaled (PREVIEW_IMAGE_HEIGHT)));
+      previewWidget->loadImageFromUrl (tmpl->previewUrl); // 宽度自适应
     }
   }
   layout->addWidget (previewWidget, 0, Qt::AlignCenter);
@@ -537,6 +567,12 @@ QTTemplatePage::showTemplatePreview (const QString& templateId) {
   btnLayout->addStretch ();
 
   QPushButton* cancelBtn= new QPushButton (qt_translate ("Cancel"), dialog);
+  cancelBtn->setObjectName ("template-cancel-btn");
+  DpiUtils::applyScaledFont (cancelBtn, kUseButtonFontPx);
+  cancelBtn->setStyleSheet (QString ("padding: %1px %2px; border-radius: %3px;")
+                                .arg (DpiUtils::scaled (kUseButtonPadYPx))
+                                .arg (DpiUtils::scaled (kUseButtonPadXPx))
+                                .arg (DpiUtils::scaled (kUseButtonRadiusPx)));
   connect (cancelBtn, &QPushButton::clicked, dialog, &QDialog::reject);
   btnLayout->addWidget (cancelBtn);
 
@@ -695,5 +731,19 @@ QTTemplatePage::showEvent (QShowEvent* event) {
   if (templateManager_ && templateManager_->isInitialized () &&
       !templateManager_->templates ().isEmpty ()) {
     refreshTemplateGrid (currentCategory_);
+  }
+}
+
+void
+QTTemplatePage::resizeEvent (QResizeEvent* event) {
+  QWidget::resizeEvent (event);
+
+  // Recalculate column count on resize
+  if (templateManager_ && templateManager_->isInitialized ()) {
+    int newColumnCount= calculateColumnCount ();
+    if (newColumnCount != currentColumnCount_) {
+      // Column count changed, refresh the grid
+      refreshTemplateGrid (currentCategory_);
+    }
   }
 }
