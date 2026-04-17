@@ -102,10 +102,13 @@ TemplateCache::loadMetadataCache () {
     }
     tmpl->tags= tags;
 
-    // Check if locally cached
-    tmpl->isLocal= isTemplateCached (tmpl->id);
-    if (tmpl->isLocal) {
-      tmpl->localPath= cachedTemplatePath (tmpl->id);
+    // Check if locally cached - only if file actually exists
+    if (isTemplateCached (tmpl->id)) {
+      QString cachedPath= cachedTemplatePath (tmpl->id);
+      if (!cachedPath.isEmpty ()) {
+        tmpl->isLocal  = true;
+        tmpl->localPath= cachedPath;
+      }
     }
 
     metadata.insert (tmpl->id, tmpl);
@@ -202,7 +205,13 @@ TemplateCache::removeCachedTemplate (const QString& templateId) {
   auto it= cacheIndex_.find (templateId);
   if (it != cacheIndex_.end ()) {
     // Remove file
-    QFile::remove (it->localPath);
+    bool removed= QFile::remove (it->localPath);
+    if (!removed) {
+      qWarning () << "Failed to remove cached template file:" << it->localPath;
+    }
+    else {
+      qDebug () << "Removed cached template file:" << it->localPath;
+    }
 
     cacheIndex_.erase (it);
     saveCacheIndex ();
