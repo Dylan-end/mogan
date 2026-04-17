@@ -91,10 +91,10 @@ TemplateManager::initialize () {
     // checking
   }
 
-  // Try to fetch remote metadata
-  // If remote fetch fails, we'll emit templatesLoaded from
-  // onRemoteMetadataFailed
-  checkForUpdates ();
+  // Always try to refresh remote metadata in the background.
+  // Cached data is already available for fast initial rendering and offline
+  // use.
+  refreshTemplates ();
 
   initialized_= true;
   emit initialized (true);
@@ -315,17 +315,6 @@ TemplateManager::refreshTemplates () {
 }
 
 void
-TemplateManager::checkForUpdates () {
-  // Check if we need to refresh based on last update time
-  QDateTime lastUpdate= cache_->lastMetadataUpdate ();
-  if (!lastUpdate.isValid () ||
-      lastUpdate.secsTo (QDateTime::currentDateTime ()) > 3600) {
-    // No recent update, fetch fresh metadata
-    refreshTemplates ();
-  }
-}
-
-void
 TemplateManager::downloadTemplate (const QString& templateId) {
   auto tmpl= templates_.value (templateId);
   if (!tmpl) {
@@ -356,8 +345,8 @@ void
 TemplateManager::onNetworkStateChanged (bool isOnline) {
   isOnline_= isOnline;
   if (isOnline && initialized_) {
-    // Try to fetch metadata when coming back online
-    checkForUpdates ();
+    // Refresh immediately when connectivity is restored.
+    refreshTemplates ();
   }
 }
 
@@ -410,7 +399,6 @@ TemplateManager::onRemoteMetadataLoaded (
 
   // Save to cache
   cache_->saveMetadataCache (templates_);
-  cache_->setLastMetadataUpdate (QDateTime::currentDateTime ());
 
   // Notify UI
   emit templatesLoaded ();
