@@ -82,6 +82,7 @@ class qt_tm_widget_rep : public qt_window_widget_rep {
   QWK::WidgetWindowAgent* windowAgent;
   QWK::NotificationBar*   scmNotificationBar; // SCM 提示条
   QWK::LoginButton*       loginButton;
+  QPushButton*            vipButton;
   QWK::LoginDialog*       m_loginDialog;
   QLabel*                 avatarLabel;
   QLabel*                 nameLabel;
@@ -108,6 +109,7 @@ class qt_tm_widget_rep : public qt_window_widget_rep {
   bool    menuToolBarVisibleCache;
   bool    titleBarVisibleCache;
   QString m_userId;
+  QString m_memberType;
   QString m_currentScmNotificationItem;
 
 private:
@@ -127,6 +129,8 @@ private:
                                       const QString& periodLabelColor= QString (),
                                       const QString& productType= QString ());
   void triggerOAuth2 ();
+  void updateLoginButtonState (bool           isLoggedIn,
+                               const QString& displayName= QString ());
   void updateDialogContent (bool isLoggedIn, const QString& username,
                             const QString& email, const QString& avatarText,
                             const QString& memberType,
@@ -134,6 +138,7 @@ private:
                             const QString& periodLabelColor,
                             const QString& productType);
   void showNotLoggedInDialog (const QString& errorMessage);
+  void updateVipButtonVisibility (bool isLoggedIn, const QString& memberType);
   void logout ();
 
   // Version update notification
