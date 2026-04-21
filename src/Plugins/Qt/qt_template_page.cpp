@@ -8,7 +8,6 @@
 #include "qt_template_page.hpp"
 
 #include <QBuffer>
-#include <QDebug>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QEvent>
@@ -38,7 +37,7 @@
 
 namespace {
 // 预览图片尺寸（增大预览区域）
-constexpr int PREVIEW_IMAGE_WIDTH= 400;
+constexpr int PREVIEW_IMAGE_WIDTH= 600;
 
 // 缩略图尺寸（使用2x尺寸以便在高分屏上显示清晰）
 constexpr int THUMBNAIL_WIDTH = 240;
@@ -54,7 +53,7 @@ constexpr int kCardMargin          = 12;  // 卡片内边距
 constexpr int kCardSpacing         = 8;   // 卡片内部间距
 constexpr int kNameLabelMaxHeight  = 40;  // 模板名称最大高度
 constexpr int kPreviewDialogMinW   = 800; // 预览弹窗最小宽度
-constexpr int kPreviewDialogMinH   = 600; // 预览弹窗最小高度
+constexpr int kPreviewDialogMinH   = 800; // 预览弹窗最小高度
 constexpr int kPreviewLayoutSpacing= 16;  // 预览弹窗布局间距
 constexpr int kPreviewLayoutMargin = 24;  // 预览弹窗布局边距
 constexpr int kPageTitleFontPx     = 24;  // 页面标题字号
@@ -547,19 +546,13 @@ QTTemplatePage::showTemplatePreview (const QString& templateId) {
   // Preview area using reusable PDF preview widget
   QTPdfPreviewWidget* previewWidget= new QTPdfPreviewWidget (dialog);
   // 设置固定尺寸，确保无内容时也有足够显示区域 (A4比例)
-  previewWidget->setFixedSize (DpiUtils::scaled (PREVIEW_IMAGE_WIDTH * 1.414),
+  // A4比例: 高:宽 = 1.414:1
+  previewWidget->setFixedSize (DpiUtils::scaled (PREVIEW_IMAGE_WIDTH),
                                DpiUtils::scaled (PREVIEW_IMAGE_WIDTH));
 
-  // Load preview (PDF or image)
+  // Load PDF preview
   if (!tmpl->previewUrl.isEmpty ()) {
-    if (tmpl->previewUrl.endsWith (".pdf")) {
-      // 使用QTPdfPreviewWidget加载PDF预览
-      previewWidget->loadFromUrl (tmpl->previewUrl);
-    }
-    else {
-      // 使用QTPdfPreviewWidget加载图片预览
-      previewWidget->loadImageFromUrl (tmpl->previewUrl); // 宽度自适应
-    }
+    previewWidget->loadFromUrl (tmpl->previewUrl);
   }
   layout->addWidget (previewWidget, 0, Qt::AlignCenter);
 
