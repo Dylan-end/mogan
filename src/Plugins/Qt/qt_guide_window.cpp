@@ -344,7 +344,8 @@ StartupLoginDialog::StartupLoginDialog (QWidget* parent)
 #endif
       fadeAnimation (nullptr), result (DialogRejected),
       initializationInProgress (false), initializationComplete (false),
-      userChoiceMade (false), dragInProgress (false), asyncStartupMode (false) {
+      userChoiceMade (false), waitingForLoginCompletion (false),
+      dragInProgress (false), asyncStartupMode (false) {
 
   // 设置无边框窗口标志
   setWindowFlags ((windowFlags () | Qt::FramelessWindowHint) &
@@ -391,6 +392,12 @@ StartupLoginDialog::execWithResult () {
 void
 StartupLoginDialog::setAsyncStartupMode (bool enabled) {
   asyncStartupMode= enabled;
+}
+
+void
+StartupLoginDialog::notifyLoginSucceeded () {
+  waitingForLoginCompletion= false;
+  fadeOutAndClose ();
 }
 
 void
@@ -528,7 +535,10 @@ StartupLoginDialog::handleLoginButtonClick () {
   emit loginRequested ();
 
   if (asyncStartupMode) {
-    close ();
+    waitingForLoginCompletion= true;
+    enableButtons (true);
+    updateProgressUI (100, qt_translate ("正在等待登录完成..."),
+                      qt_translate ("登录完成后弹窗自动关闭"));
     return;
   }
 
@@ -610,6 +620,11 @@ StartupLoginDialog::handleInitializationComplete (bool success) {
     // 如果用户已经做出选择，触发过渡
     if (!asyncStartupMode && userChoiceMade) {
       fadeOutAndClose ();
+    }
+    else if (asyncStartupMode && waitingForLoginCompletion) {
+      enableButtons (true);
+      updateProgressUI (100, qt_translate ("正在等待登录完成..."),
+                        qt_translate ("登录成功后自动关闭"));
     }
     else {
       // 启用按钮并更新UI以供用户选择
@@ -693,6 +708,7 @@ StartupLoginDialog::fadeOutAndClose () {
   fadeAnimation->setEasingCurve (QEasingCurve::OutCubic);
 
   connect (fadeAnimation, &QPropertyAnimation::finished, this, [this] () {
+    clearMainWindowOverlay ();
     accept (); // 以接受状态关闭对话框
   });
 
