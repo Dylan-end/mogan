@@ -34,7 +34,7 @@ static TemplateManager* g_instance= nullptr;
 
 TemplateManager::TemplateManager (QObject* parent)
     : QObject (parent), initialized_ (false), cache_ (nullptr), api_ (nullptr),
-      isOnline_ (true), isRefreshing_ (false) {
+      isOnline_ (true), isRefreshing_ (false), isRetryingWithoutEtag_ (false) {
   cache_= new TemplateCache (this);
   api_  = new TemplateAPI (this);
 
@@ -43,6 +43,8 @@ TemplateManager::TemplateManager (QObject* parent)
            &TemplateManager::onRemoteMetadataLoaded);
   connect (api_, &TemplateAPI::metadataLoadFailed, this,
            &TemplateManager::onRemoteMetadataFailed);
+  connect (api_, &TemplateAPI::metadataNotModified, this,
+           &TemplateManager::onMetadataNotModified);
   connect (api_, &TemplateAPI::downloadCompleted, this,
            &TemplateManager::onTemplateDownloaded);
   connect (api_, &TemplateAPI::downloadFailed, this,
@@ -315,6 +317,12 @@ TemplateManager::refreshTemplates () {
   }
 
   isRefreshing_= true;
+
+  // Set ETag for conditional request to avoid re-downloading unchanged metadata
+  if (cache_->isInitialized ()) {
+    api_->setMetadataEtag (cache_->metadataEtag ());
+  }
+
   api_->fetchMetadata ();
 }
 
@@ -358,7 +366,13 @@ void
 TemplateManager::onRemoteMetadataLoaded (
     const QHash<QString, TemplateMetadataPtr>& remoteMetadata,
     const QList<TemplateCategory>&             remoteCategories) {
-  isRefreshing_= false;
+  isRefreshing_         = false;
+  isRetryingWithoutEtag_= false;
+
+  // Save ETag from successful response for future conditional requests
+  // Clear ETag if server no longer sends it (server may have disabled caching)
+  QString etag= api_->lastMetadataEtag ();
+  cache_->setMetadataEtag (etag);
 
   if (remoteMetadata.isEmpty () && !templates_.isEmpty ()) {
     QString error= tr ("Remote metadata is empty");
@@ -414,12 +428,35 @@ TemplateManager::onRemoteMetadataLoaded (
 
 void
 TemplateManager::onRemoteMetadataFailed (const QString& error) {
-  isRefreshing_= false;
+  isRefreshing_         = false;
+  isRetryingWithoutEtag_= false;
   qWarning () << "Failed to load remote metadata:" << error;
 
   // We still have local/cache data, so emit success for cached data
   emit templatesLoaded ();
   emit templatesLoadFailed (error);
+}
+
+void
+TemplateManager::onMetadataNotModified () {
+  isRefreshing_= false;
+  if (templates_.isEmpty ()) {
+    if (isRetryingWithoutEtag_) {
+      qWarning () << "Server returned 304 even without If-None-Match, aborting";
+      isRetryingWithoutEtag_= false;
+      emit templatesLoadFailed (tr ("Server returned unexpected 304"));
+      return;
+    }
+    qWarning ()
+        << "304 received but no local cache available, retrying without ETag";
+    cache_->setMetadataEtag (QString ());
+    isRetryingWithoutEtag_= true;
+    refreshTemplates ();
+    return;
+  }
+  isRetryingWithoutEtag_= false;
+  qDebug () << "Metadata not modified (304), using cached data";
+  emit templatesLoaded ();
 }
 
 void
