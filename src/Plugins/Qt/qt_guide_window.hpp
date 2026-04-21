@@ -13,6 +13,7 @@
 
 #include <QEvent>
 #include <QPoint>
+#include <QPointer>
 #include <QPropertyAnimation>
 #include <QtWidgets/QCheckBox>
 #include <QtWidgets/QDialog>
@@ -88,6 +89,10 @@ private:
   void enableButtons (bool enabled);
   void installDragHandler (QWidget* widget);
   void resetDragCursor ();
+  void ensureMainWindowOverlay ();
+  void clearMainWindowOverlay ();
+  void syncMainWindowOverlay ();
+  void centerOverMainWindow ();
 
   // autobackup
   bool getAutoBackup ();
@@ -130,9 +135,11 @@ private:
   bool userChoiceMade;
 
   // Manual dragging for the frameless startup dialog
-  bool   dragInProgress;
-  QPoint dragOffset;
-  bool   asyncStartupMode;
+  bool              dragInProgress;
+  QPoint            dragOffset;
+  bool              asyncStartupMode;
+  QPointer<QWidget> mainWindowOverlayHost;
+  QPointer<QWidget> mainWindowOverlay;
 };
 
 } // namespace QWK
