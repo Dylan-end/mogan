@@ -21,6 +21,7 @@ class QProgressDialog;
 class QPushButton;
 class QResizeEvent;
 class QScrollArea;
+class QTimer;
 class TemplateManager;
 struct TemplateMetadata;
 using TemplateMetadataPtr= QSharedPointer<TemplateMetadata>;
@@ -32,6 +33,7 @@ using TemplateMetadataPtr= QSharedPointer<TemplateMetadata>;
 struct ThumbnailRequest {
   QPointer<QLabel> label;
   QString          url;
+  QString          cachedEtag;
 };
 
 /**
@@ -104,6 +106,17 @@ private:
 
   // Responsive grid
   int currentColumnCount_= 4;
+
+  // Avoid duplicate refresh when onTemplatesLoaded and showEvent both fire
+  bool gridNeedsRefresh_= true;
+
+  // Track URLs that have been validated in this session (conditional request
+  // sent at least once). Once validated, subsequent displays use cache
+  // directly.
+  QSet<QString> validatedUrls_;
+
+  // Debounce timer for resize events to avoid frequent grid rebuilds
+  QTimer* resizeDebounceTimer_;
 };
 
 #endif // QT_TEMPLATE_PAGE_HPP

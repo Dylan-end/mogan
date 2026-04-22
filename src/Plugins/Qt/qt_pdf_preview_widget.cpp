@@ -14,6 +14,7 @@
 #include <QNetworkReply>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QSet>
 #include <QTimeZone>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -26,6 +27,9 @@
 #include "qt_dpi_utils.hpp"
 #include "qt_utilities.hpp"
 #include <mupdf/fitz.h>
+
+// 会话级已验证 URL 集合（同一会话内只发一次条件请求）
+static QSet<QString> s_validatedPdfUrls;
 
 // 常量定义
 namespace {
@@ -140,8 +144,8 @@ QTPdfPreviewWidget::setupUI () {
   pageIndicator_->setMouseTracking (true);
   previewLabel_->setMouseTracking (true);
 
-  // 显示初始占位符
-  clearPreview (qt_translate ("No Preview"));
+  // 默认显示 Loading，有内容时会被覆盖；无内容时由调用方设为 No Preview
+  clearPreview (qt_translate ("Loading..."));
 }
 
 void
@@ -219,7 +223,20 @@ QTPdfPreviewWidget::loadFromUrl (const QString& url, int dpi) {
   // First check if PDF file is cached locally
   PdfCacheEntry cachedEntry= PdfFileCache::instance ()->getEntry (url);
   if (cachedEntry.isValid ()) {
-    // Check if remote has updated (conditional request)
+    // Render cached content immediately so user never sees "No Preview"
+    loadFromFile (cachedEntry.filePath, dpi);
+    // Restore URL key so background validation and cache updates use the
+    // original URL, not the local file path.
+    currentKey_= url;
+
+    // Already validated this session: use cache directly, no network request
+    if (s_validatedPdfUrls.contains (url)) {
+      qDebug () << "[PDF Preview] Use cache:" << url;
+      return;
+    }
+
+    // First time this session: validate with a conditional request
+    qDebug () << "[PDF Preview] Validate:" << url;
     QNetworkRequest request (url);
     if (!cachedEntry.etag.isEmpty ()) {
       request.setRawHeader ("If-None-Match", cachedEntry.etag.toUtf8 ());
@@ -397,6 +414,25 @@ QTPdfPreviewWidget::processNetworkReply (QPointer<QNetworkReply> reply) {
   }
 
   pdfData_= reply->readAll ();
+
+  // Extract HTTP cache headers BEFORE deleteLater to avoid use-after-free
+  QString   etag= QString::fromUtf8 (reply->rawHeader ("ETag"));
+  QDateTime lastModified;
+  QString   lastModStr= QString::fromUtf8 (reply->rawHeader ("Last-Modified"));
+  if (!lastModStr.isEmpty ()) {
+    // RFC 2822 / HTTP-date format: "Thu, 29 Jan 2026 11:32:54 GMT"
+    // Use RFC2822Date with C locale to ensure consistent parsing
+    lastModified= QLocale::c ().toDateTime (lastModStr,
+                                            "ddd, dd MMM yyyy hh:mm:ss 'GMT'");
+    if (!lastModified.isValid ()) {
+      // Fallback to Qt's built-in RFC2822 parser
+      lastModified= QDateTime::fromString (lastModStr, Qt::RFC2822Date);
+    }
+    if (lastModified.isValid ()) {
+      lastModified.setTimeZone (QTimeZone::utc ());
+    }
+  }
+
   reply->deleteLater ();
 
   if (pdfData_.isEmpty ()) {
@@ -406,30 +442,11 @@ QTPdfPreviewWidget::processNetworkReply (QPointer<QNetworkReply> reply) {
     return;
   }
 
-  // Extract HTTP cache headers and save to file cache
-  QString   etag;
-  QDateTime lastModified;
-  if (reply) {
-    etag              = QString::fromUtf8 (reply->rawHeader ("ETag"));
-    QString lastModStr= QString::fromUtf8 (reply->rawHeader ("Last-Modified"));
-    if (!lastModStr.isEmpty ()) {
-      // RFC 2822 / HTTP-date format: "Thu, 29 Jan 2026 11:32:54 GMT"
-      // Use RFC2822Date with C locale to ensure consistent parsing
-      lastModified= QLocale::c ().toDateTime (
-          lastModStr, "ddd, dd MMM yyyy hh:mm:ss 'GMT'");
-      if (!lastModified.isValid ()) {
-        // Fallback to Qt's built-in RFC2822 parser
-        lastModified= QDateTime::fromString (lastModStr, Qt::RFC2822Date);
-      }
-      if (lastModified.isValid ()) {
-        lastModified.setTimeZone (QTimeZone::utc ());
-      }
-    }
-  }
-
   // Save to cache with HTTP metadata
   PdfFileCache::instance ()->saveToCache (currentKey_, pdfData_, etag,
                                           lastModified);
+  s_validatedPdfUrls.insert (currentKey_);
+  qDebug () << "[PDF Preview] Update cache:" << currentKey_;
 
   renderCurrentPage ();
   currentLoadType_= LoadType::None;
@@ -446,7 +463,8 @@ QTPdfPreviewWidget::onConditionalReplyFinished (const QString& cachedFilePath,
   // 304 Not Modified - use cached file
   if (reply->attribute (QNetworkRequest::HttpStatusCodeAttribute).toInt () ==
       304) {
-    qDebug () << "[PDF Preview] Remote not modified, using cache";
+    qDebug () << "[PDF Preview] Cache fresh:" << currentKey_;
+    s_validatedPdfUrls.insert (currentKey_);
     reply->deleteLater ();
     loadFromFile (cachedFilePath, dpi);
     return;

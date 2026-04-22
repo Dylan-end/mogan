@@ -7,13 +7,14 @@
 
 #include "qt_template_page.hpp"
 
-#include <QBuffer>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QEvent>
+#include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLocale>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QNetworkAccessManager>
@@ -23,9 +24,11 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QScrollArea>
+#include <QSet>
 #include <QShowEvent>
 #include <QStyle>
 #include <QTemporaryFile>
+#include <QTimeZone>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -52,7 +55,7 @@ constexpr int kCardHeight          = 220; // 模板卡片高度
 constexpr int kCardMargin          = 12;  // 卡片内边距
 constexpr int kCardSpacing         = 8;   // 卡片内部间距
 constexpr int kNameLabelMaxHeight  = 40;  // 模板名称最大高度
-constexpr int kPreviewDialogMinW   = 800; // 预览弹窗最小宽度
+constexpr int kPreviewDialogMinW   = 700; // 预览弹窗最小宽度
 constexpr int kPreviewDialogMinH   = 800; // 预览弹窗最小高度
 constexpr int kPreviewLayoutSpacing= 16;  // 预览弹窗布局间距
 constexpr int kPreviewLayoutMargin = 24;  // 预览弹窗布局边距
@@ -68,21 +71,18 @@ constexpr int kThumbBorderWidthPx  = 1;   // 缩略图边框宽度
 constexpr int kUseButtonRadiusPx   = 4;   // Use Template 按钮圆角
 constexpr int kUseButtonPadYPx     = 8;   // Use Template 按钮纵向内边距
 constexpr int kUseButtonPadXPx     = 24;  // Use Template 按钮横向内边距
+constexpr int kGridMarginPx        = 30;  // 网格布局上下边距
+constexpr int kCategoryBtnRadiusPx = 12;  // 分类按钮圆角
+constexpr int kCategoryBtnPadYPx   = 6;   // 分类按钮纵向内边距
+constexpr int kCategoryBtnPadXPx   = 14;  // 分类按钮横向内边距
+constexpr int kCardRadiusPx        = 8;   // 模板卡片圆角
 
 void
-applyThumbnailFrameStyle (QLabel* label, bool loaded) {
+applyThumbnailFrameStyle (QLabel* label) {
   if (!label) return;
-  if (loaded) {
-    label->setStyleSheet (QString ("border-radius: %1px; border-width: 0px;")
-                              .arg (DpiUtils::scaled (kThumbRadiusPx)));
-  }
-  else {
-    label->setStyleSheet (
-        QString (
-            "border-radius: %1px; border-width: %2px; border-style: solid;")
-            .arg (DpiUtils::scaled (kThumbRadiusPx))
-            .arg (DpiUtils::scaled (kThumbBorderWidthPx)));
-  }
+  label->setStyleSheet (
+      QString ("QLabel#startup-tab-template-thumbnail { border-radius: %1px; }")
+          .arg (DpiUtils::scaled (kThumbRadiusPx)));
 }
 
 } // namespace
@@ -92,8 +92,21 @@ QTTemplatePage::QTTemplatePage (QWidget* parent)
       scrollArea_ (nullptr), gridWidget_ (nullptr), gridLayout_ (nullptr),
       progressDialog_ (nullptr), templateManager_ (nullptr),
       currentCategory_ (""), activeCategoryBtn_ (nullptr),
-      networkManager_ (nullptr) {
+      networkManager_ (nullptr), resizeDebounceTimer_ (nullptr) {
   networkManager_= new QNetworkAccessManager (this);
+
+  resizeDebounceTimer_= new QTimer (this);
+  resizeDebounceTimer_->setSingleShot (true);
+  resizeDebounceTimer_->setInterval (200);
+  connect (resizeDebounceTimer_, &QTimer::timeout, this, [this] () {
+    if (templateManager_ && templateManager_->isInitialized ()) {
+      int newColumnCount= calculateColumnCount ();
+      if (newColumnCount != currentColumnCount_) {
+        refreshTemplateGrid (currentCategory_);
+      }
+    }
+  });
+
   setupUI ();
 }
 
@@ -158,7 +171,8 @@ QTTemplatePage::setupUI () {
   gridWidget_= new QWidget (scrollArea_);
   gridLayout_= new QGridLayout (gridWidget_);
   gridLayout_->setSpacing (DpiUtils::scaled (kGridSpacing));
-  gridLayout_->setContentsMargins (0, 0, 0, 0);
+  gridLayout_->setContentsMargins (0, DpiUtils::scaled (kGridMarginPx), 0,
+                                   DpiUtils::scaled (kGridMarginPx));
 
   scrollArea_->setWidget (gridWidget_);
   layout->addWidget (scrollArea_, 1);
@@ -169,7 +183,7 @@ QTTemplatePage::setupUI () {
   loadingLabel->setObjectName ("startup-tab-loading");
   loadingLabel->setAlignment (Qt::AlignCenter);
   DpiUtils::applyScaledFont (loadingLabel, kLoadingFontPx);
-  gridLayout_->addWidget (loadingLabel, 0, 0, 1, 6);
+  gridLayout_->addWidget (loadingLabel, 0, 0, 1, 1);
 }
 
 void
@@ -194,12 +208,25 @@ QTTemplatePage::setupCategoryBar () {
   QHBoxLayout* categoryLayout= qobject_cast<QHBoxLayout*> (layout);
   if (!categoryLayout) return;
 
+  // Helper: apply category button style
+  auto styleCategoryBtn= [] (QPushButton* btn) {
+    btn->setStyleSheet (QString ("QPushButton#startup-tab-category-btn {"
+                                 "  border-radius: %1px;"
+                                 "  padding: %2px %3px;"
+                                 "}")
+                            .arg (DpiUtils::scaled (kCategoryBtnRadiusPx))
+                            .arg (DpiUtils::scaled (kCategoryBtnPadYPx))
+                            .arg (DpiUtils::scaled (kCategoryBtnPadXPx)));
+    btn->setCursor (Qt::PointingHandCursor);
+  };
+
   // Add "All" button
   QPushButton* allBtn= new QPushButton (qt_translate ("All"), categoryBar_);
   allBtn->setObjectName ("startup-tab-category-btn");
   allBtn->setCheckable (true);
   allBtn->setChecked (currentCategory_.isEmpty ());
   allBtn->setProperty ("categoryId", QString ());
+  styleCategoryBtn (allBtn);
   connect (allBtn, &QPushButton::clicked, this,
            &QTTemplatePage::onCategoryClicked);
   categoryLayout->addWidget (allBtn);
@@ -218,6 +245,7 @@ QTTemplatePage::setupCategoryBar () {
     btn->setCheckable (true);
     btn->setChecked (cat.id == currentCategory_);
     btn->setProperty ("categoryId", cat.id);
+    styleCategoryBtn (btn);
     connect (btn, &QPushButton::clicked, this,
              &QTTemplatePage::onCategoryClicked);
     categoryLayout->addWidget (btn);
@@ -246,18 +274,16 @@ int
 QTTemplatePage::calculateColumnCount () const {
   if (!scrollArea_) return 4;
 
-  // Calculate available width for grid
   int availableWidth= scrollArea_->viewport ()->width ();
   int cardWidth     = DpiUtils::scaled (kCardWidth);
   int spacing       = DpiUtils::scaled (kGridSpacing);
+  int cardSpace     = cardWidth + spacing;
 
-  // Each card takes: card width + spacing (except last in row)
-  int cardSpace= cardWidth + spacing;
+  // Viewport not yet properly laid out (default QWidget size is small),
+  // return a sensible default instead of 1 column
+  if (availableWidth < cardSpace && availableWidth < cardWidth * 2) return 4;
 
-  // Calculate max columns that fit
   int columns= (availableWidth + spacing) / cardSpace;
-
-  // Clamp between 1 and 6
   return qBound (1, columns, 6);
 }
 
@@ -291,10 +317,14 @@ QTTemplatePage::refreshTemplateGrid (const QString& category) {
     delete item;
   }
 
+  // Calculate columns first so placeholder labels span the right width
+  currentColumnCount_= calculateColumnCount ();
+
   if (!templateManager_ || !templateManager_->isInitialized ()) {
     QLabel* label= new QLabel (qt_translate ("Initializing..."), gridWidget_);
     label->setAlignment (Qt::AlignCenter);
-    gridLayout_->addWidget (label, 0, 0, 1, 6);
+    gridLayout_->addWidget (label, 0, 0, 1, currentColumnCount_);
+    gridNeedsRefresh_= false;
     return;
   }
 
@@ -311,12 +341,10 @@ QTTemplatePage::refreshTemplateGrid (const QString& category) {
     QLabel* label=
         new QLabel (qt_translate ("No templates available."), gridWidget_);
     label->setAlignment (Qt::AlignCenter);
-    gridLayout_->addWidget (label, 0, 0, 1, 6);
+    gridLayout_->addWidget (label, 0, 0, 1, currentColumnCount_);
+    gridNeedsRefresh_= false;
     return;
   }
-
-  // Calculate columns based on available width
-  currentColumnCount_= calculateColumnCount ();
 
   // Add template cards
   int row= 0, col= 0;
@@ -332,11 +360,13 @@ QTTemplatePage::refreshTemplateGrid (const QString& category) {
   }
 
   gridLayout_->setRowStretch (row + 1, 1);
+
+  gridNeedsRefresh_= false;
 }
 
 QWidget*
 QTTemplatePage::createTemplateCard (const TemplateMetadataPtr& tmpl) {
-  QWidget*     card  = new QWidget (gridWidget_);
+  QFrame*      card  = new QFrame (gridWidget_);
   QVBoxLayout* layout= new QVBoxLayout (card);
   layout->setContentsMargins (
       DpiUtils::scaled (kCardMargin), DpiUtils::scaled (kCardMargin),
@@ -348,6 +378,11 @@ QTTemplatePage::createTemplateCard (const TemplateMetadataPtr& tmpl) {
   card->setCursor (Qt::PointingHandCursor);
   card->setProperty ("templateId", tmpl->id);
   card->setToolTip (tmpl->description);
+  card->setFrameShape (QFrame::StyledPanel);
+  card->setStyleSheet (QString ("QFrame#startup-tab-template-card {"
+                                "  border-radius: %1px;"
+                                "}")
+                           .arg (DpiUtils::scaled (kCardRadiusPx)));
 
   // Thumbnail image
   QLabel* thumbnailLabel= new QLabel (card);
@@ -356,7 +391,7 @@ QTTemplatePage::createTemplateCard (const TemplateMetadataPtr& tmpl) {
                                 DpiUtils::scaled (THUMBNAIL_HEIGHT));
   thumbnailLabel->setAlignment (Qt::AlignCenter);
   thumbnailLabel->setProperty ("thumbnailLoaded", false);
-  applyThumbnailFrameStyle (thumbnailLabel, false);
+  applyThumbnailFrameStyle (thumbnailLabel);
   thumbnailLabel->setText (qt_translate ("Loading..."));
   layout->addWidget (thumbnailLabel, 0, Qt::AlignHCenter);
 
@@ -395,88 +430,136 @@ QTTemplatePage::createTemplateCard (const TemplateMetadataPtr& tmpl) {
 
 void
 QTTemplatePage::loadThumbnail (QLabel* label, const QString& url) {
-  // First check if thumbnail is already cached
   QSize targetSize (DpiUtils::scaled (THUMBNAIL_WIDTH),
                     DpiUtils::scaled (THUMBNAIL_HEIGHT));
 
-  QPixmap cached= ThumbnailCache::instance ()->get (url, targetSize);
-  if (!cached.isNull ()) {
-    // Use cached thumbnail, ensure correct DPR for current display
-    cached.setDevicePixelRatio (label->devicePixelRatioF ());
-    label->setPixmap (cached);
+  ThumbnailCache::ThumbnailCacheEntry cached=
+      ThumbnailCache::instance ()->getEntry (url, targetSize);
+
+  if (cached.isValid ()) {
+    // Always display cached pixmap immediately (avoid showing "Loading...")
+    QPixmap px= cached.pixmap;
+    px.setDevicePixelRatio (label->devicePixelRatioF ());
+    label->setPixmap (px);
     label->setProperty ("thumbnailLoaded", true);
-    applyThumbnailFrameStyle (label, true);
+    applyThumbnailFrameStyle (label);
+
+    // Already validated this session: nothing more to do
+    if (validatedUrls_.contains (url)) {
+      qDebug () << "[TemplatePage] Use cache:" << url;
+      return;
+    }
+
+    // First time this session: validate in background
+    qDebug () << "[TemplatePage] Validate:" << url;
+    thumbnailQueue_.enqueue ({label, url, cached.etag});
+    processThumbnailQueue ();
     return;
   }
 
-  // Add to queue for network download
-  thumbnailQueue_.enqueue ({label, url});
+  qDebug () << "[TemplatePage] Download:" << url;
+  thumbnailQueue_.enqueue ({label, url, QString ()});
   processThumbnailQueue ();
 }
 
 void
 QTTemplatePage::processThumbnailQueue () {
-  // Process queued requests up to the concurrency limit
   while (!thumbnailQueue_.isEmpty () &&
          activeThumbnailRequests_ < MAX_CONCURRENT_THUMBNAIL_REQUESTS) {
     ThumbnailRequest req= thumbnailQueue_.dequeue ();
 
-    // Check if the label is still valid (not deleted)
-    // QPointer automatically becomes nullptr when QLabel is deleted
     if (req.label.isNull ()) {
-      continue; // Skip invalid labels
+      continue;
     }
 
     activeThumbnailRequests_++;
 
     QNetworkRequest request (req.url);
-    QNetworkReply*  reply= networkManager_->get (request);
+    if (!req.cachedEtag.isEmpty ()) {
+      request.setRawHeader ("If-None-Match", req.cachedEtag.toUtf8 ());
+    }
+    QNetworkReply* reply= networkManager_->get (request);
 
     connect (reply, &QNetworkReply::finished, this, [this, req, reply] () {
       activeThumbnailRequests_--;
 
-      // Check if label is still valid before updating
-      // QPointer automatically becomes nullptr when QLabel is deleted
-      if (!req.label.isNull ()) {
-        if (reply->error () == QNetworkReply::NoError) {
-          QByteArray data= reply->readAll ();
-          QImage     image;
-          if (image.loadFromData (data)) {
-            // Get device pixel ratio for high-DPI displays
-            qreal dpr= req.label->devicePixelRatioF ();
-            // Scale to target size considering DPR for crisp display
-            int targetWidth = DpiUtils::scaled (THUMBNAIL_WIDTH);
-            int targetHeight= DpiUtils::scaled (THUMBNAIL_HEIGHT);
-            image           = image.scaled (qRound (targetWidth * dpr),
-                                            qRound (targetHeight * dpr),
-                                            Qt::KeepAspectRatio, Qt::SmoothTransformation);
-            QPixmap pixmap  = QPixmap::fromImage (image);
-            pixmap.setDevicePixelRatio (dpr);
+      if (req.label.isNull ()) {
+        reply->deleteLater ();
+        validatedUrls_.insert (req.url);
+        processThumbnailQueue ();
+        return;
+      }
 
-            // Update UI
-            req.label->setPixmap (pixmap);
-            req.label->setProperty ("thumbnailLoaded", true);
-            applyThumbnailFrameStyle (req.label, true);
-            req.label->style ()->unpolish (req.label);
-            req.label->style ()->polish (req.label);
+      // 304 Not Modified - cached image is still valid
+      int httpStatus=
+          reply->attribute (QNetworkRequest::HttpStatusCodeAttribute).toInt ();
+      if (httpStatus == 304) {
+        qDebug () << "[TemplatePage] Cache fresh:" << req.url;
+        validatedUrls_.insert (req.url);
+        reply->deleteLater ();
+        processThumbnailQueue ();
+        return;
+      }
 
-            // Store in cache for future use
-            QSize targetSize (DpiUtils::scaled (THUMBNAIL_WIDTH),
-                              DpiUtils::scaled (THUMBNAIL_HEIGHT));
-            ThumbnailCache::instance ()->put (req.url, targetSize, pixmap);
+      if (reply->error () == QNetworkReply::NoError) {
+        QByteArray data= reply->readAll ();
+        QImage     image;
+        if (image.loadFromData (data)) {
+          qreal  dpr         = req.label->devicePixelRatioF ();
+          int    targetWidth = DpiUtils::scaled (THUMBNAIL_WIDTH);
+          int    targetHeight= DpiUtils::scaled (THUMBNAIL_HEIGHT);
+          int    scaledW     = qRound (targetWidth * dpr);
+          int    scaledH     = qRound (targetHeight * dpr);
+          QImage scaled=
+              image.scaled (scaledW, scaledH, Qt::KeepAspectRatioByExpanding,
+                            Qt::SmoothTransformation);
+          if (scaled.width () > scaledW || scaled.height () > scaledH) {
+            int x = (scaled.width () - scaledW) / 2;
+            int y = 0;
+            scaled= scaled.copy (x, y, scaledW, scaledH);
           }
-          else {
-            req.label->setText (qt_translate ("Preview"));
+          QPixmap pixmap= QPixmap::fromImage (scaled);
+          pixmap.setDevicePixelRatio (dpr);
+
+          req.label->setPixmap (pixmap);
+          req.label->setProperty ("thumbnailLoaded", true);
+          applyThumbnailFrameStyle (req.label);
+          req.label->style ()->unpolish (req.label);
+          req.label->style ()->polish (req.label);
+
+          // Extract HTTP cache headers and save to cache
+          QString   etag= QString::fromUtf8 (reply->rawHeader ("ETag"));
+          QDateTime lastModified;
+          QString lmStr= QString::fromUtf8 (reply->rawHeader ("Last-Modified"));
+          if (!lmStr.isEmpty ()) {
+            lastModified= QDateTime::fromString (lmStr, Qt::RFC2822Date);
+            if (!lastModified.isValid ()) {
+              lastModified= QLocale::c ().toDateTime (
+                  lmStr, "ddd, dd MMM yyyy hh:mm:ss 'GMT'");
+            }
+            if (lastModified.isValid ()) {
+              lastModified.setTimeZone (QTimeZone::utc ());
+            }
           }
+
+          QSize targetSize (targetWidth, targetHeight);
+          ThumbnailCache::instance ()->put (req.url, targetSize, pixmap, etag,
+                                            lastModified);
+          qDebug () << "[TemplatePage] Update cache:" << req.url;
         }
         else {
           req.label->setText (qt_translate ("Preview"));
         }
       }
+      else {
+        // Only show placeholder if there was no cached pixmap to preserve
+        if (req.label->pixmap ().isNull ()) {
+          req.label->setText (qt_translate ("Preview"));
+        }
+      }
 
+      validatedUrls_.insert (req.url);
       reply->deleteLater ();
-
-      // Process next items in queue
       processThumbnailQueue ();
     });
   }
@@ -510,6 +593,8 @@ QTTemplatePage::showTemplatePreview (const QString& templateId) {
       qt_translate ("Template Preview - %1").arg (tmpl->name));
   dialog->setMinimumSize (DpiUtils::scaled (kPreviewDialogMinW),
                           DpiUtils::scaled (kPreviewDialogMinH));
+  dialog->resize (DpiUtils::scaled (kPreviewDialogMinW),
+                  DpiUtils::scaled (kPreviewDialogMinH));
 
   QVBoxLayout* layout= new QVBoxLayout (dialog);
   layout->setSpacing (DpiUtils::scaled (kPreviewLayoutSpacing));
@@ -545,14 +630,16 @@ QTTemplatePage::showTemplatePreview (const QString& templateId) {
 
   // Preview area using reusable PDF preview widget
   QTPdfPreviewWidget* previewWidget= new QTPdfPreviewWidget (dialog);
-  // 设置固定尺寸，确保无内容时也有足够显示区域 (A4比例)
-  // A4比例: 高:宽 = 1.414:1
+  // 设置固定尺寸，确保无内容时也有足够显示区域
   previewWidget->setFixedSize (DpiUtils::scaled (PREVIEW_IMAGE_WIDTH),
                                DpiUtils::scaled (PREVIEW_IMAGE_WIDTH));
 
   // Load PDF preview
   if (!tmpl->previewUrl.isEmpty ()) {
     previewWidget->loadFromUrl (tmpl->previewUrl);
+  }
+  else {
+    previewWidget->clearPreview (qt_translate ("No Preview"));
   }
   layout->addWidget (previewWidget, 0, Qt::AlignCenter);
 
@@ -563,7 +650,11 @@ QTTemplatePage::showTemplatePreview (const QString& templateId) {
   QPushButton* cancelBtn= new QPushButton (qt_translate ("Cancel"), dialog);
   cancelBtn->setObjectName ("template-cancel-btn");
   DpiUtils::applyScaledFont (cancelBtn, kUseButtonFontPx);
-  cancelBtn->setStyleSheet (QString ("padding: %1px %2px; border-radius: %3px;")
+  cancelBtn->setCursor (Qt::PointingHandCursor);
+  cancelBtn->setStyleSheet (QString ("QPushButton#template-cancel-btn {"
+                                     "  padding: %1px %2px;"
+                                     "  border-radius: %3px;"
+                                     "}")
                                 .arg (DpiUtils::scaled (kUseButtonPadYPx))
                                 .arg (DpiUtils::scaled (kUseButtonPadXPx))
                                 .arg (DpiUtils::scaled (kUseButtonRadiusPx)));
@@ -573,7 +664,11 @@ QTTemplatePage::showTemplatePreview (const QString& templateId) {
   QPushButton* useBtn= new QPushButton (qt_translate ("Use Template"), dialog);
   useBtn->setObjectName ("template-use-btn");
   DpiUtils::applyScaledFont (useBtn, kUseButtonFontPx);
-  useBtn->setStyleSheet (QString ("padding: %1px %2px; border-radius: %3px;")
+  useBtn->setCursor (Qt::PointingHandCursor);
+  useBtn->setStyleSheet (QString ("QPushButton#template-use-btn {"
+                                  "  padding: %1px %2px;"
+                                  "  border-radius: %3px;"
+                                  "}")
                              .arg (DpiUtils::scaled (kUseButtonPadYPx))
                              .arg (DpiUtils::scaled (kUseButtonPadXPx))
                              .arg (DpiUtils::scaled (kUseButtonRadiusPx)));
@@ -653,16 +748,8 @@ QTTemplatePage::onTemplatesLoaded () {
   if (categoryBar_ && categoryBar_->layout ()->count () == 0) {
     setupCategoryBar ();
   }
+  gridNeedsRefresh_= true;
   refreshTemplateGrid (currentCategory_);
-
-  // Force layout update to ensure content is visible
-  if (gridWidget_) {
-    gridWidget_->update ();
-    gridWidget_->adjustSize ();
-  }
-  if (scrollArea_) {
-    scrollArea_->update ();
-  }
 }
 
 void
@@ -721,8 +808,10 @@ void
 QTTemplatePage::showEvent (QShowEvent* event) {
   QWidget::showEvent (event);
 
-  // Refresh grid when page becomes visible
-  if (templateManager_ && templateManager_->isInitialized () &&
+  // Refresh grid when page becomes visible (avoid duplicate if already
+  // refreshed by onTemplatesLoaded)
+  if (gridNeedsRefresh_ && templateManager_ &&
+      templateManager_->isInitialized () &&
       !templateManager_->templates ().isEmpty ()) {
     refreshTemplateGrid (currentCategory_);
   }
@@ -732,12 +821,8 @@ void
 QTTemplatePage::resizeEvent (QResizeEvent* event) {
   QWidget::resizeEvent (event);
 
-  // Recalculate column count on resize
-  if (templateManager_ && templateManager_->isInitialized ()) {
-    int newColumnCount= calculateColumnCount ();
-    if (newColumnCount != currentColumnCount_) {
-      // Column count changed, refresh the grid
-      refreshTemplateGrid (currentCategory_);
-    }
+  // Debounce resize to avoid frequent grid rebuilds during window dragging
+  if (resizeDebounceTimer_) {
+    resizeDebounceTimer_->start ();
   }
 }
