@@ -11,7 +11,7 @@ ICON_SOURCE_REL="3rdparty/qwindowkitty/src/styles/app/stem.png"
 
 # 尝试获取 VERSION
 if [ -z "$VERSION" ]; then
-    VERSION="2026.2.2"
+    VERSION="2026.2.3"
 else
     echo "✅ 检测到版本号: $VERSION"
 fi
@@ -114,17 +114,22 @@ fi
 # ================= 4. 准备工具 =================
 echo "🛠️  [4/6] 准备 LinuxDeploy..."
 if [ ! -f "$DEPLOY_TOOL" ]; then
-    wget -q "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/$DEPLOY_TOOL"
+    curl -fsSL -o "$DEPLOY_TOOL" "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/$DEPLOY_TOOL"
     chmod +x "$DEPLOY_TOOL"
 fi
 if [ ! -f "$QT_PLUGIN" ]; then
-    wget -q "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/$QT_PLUGIN"
+    curl -fsSL -o "$QT_PLUGIN" "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/$QT_PLUGIN"
     chmod +x "$QT_PLUGIN"
 fi
 
 # ================= 5. 打包依赖 (Bundle) =================
 echo "🔍 [5/6] 注入 Qt 依赖..."
-XMAKE_QMAKE=$(find ~/.xmake/packages -type f -name qmake 2>/dev/null | grep "qt" | head -n 1)
+if [ -n "$XMAKE_GLOBALDIR" ]; then
+    XMAKE_QMAKE=$(find "$XMAKE_GLOBALDIR/.xmake/packages" -type f -name qmake 2>/dev/null | grep "qt" | head -n 1)
+fi
+if [ -z "$XMAKE_QMAKE" ]; then
+    XMAKE_QMAKE=$(find ~/.xmake/packages -type f -name qmake 2>/dev/null | grep "qt" | head -n 1)
+fi
 if [ -n "$XMAKE_QMAKE" ]; then
     export QMAKE="$XMAKE_QMAKE"
     export PATH="$(dirname "$XMAKE_QMAKE"):$PATH"
