@@ -55,6 +55,8 @@ using lolly::data::as_hexadecimal;
 #include "Ghostscript/gs_utilities.hpp"
 #endif
 
+#include <moebius/data/scheme.hpp>
+
 #define SCREEN_PIXEL (PIXEL)
 
 hashmap<int, string> qtkeymap (0);
@@ -842,6 +844,16 @@ qt_translate (const string& s) {
   string in_lan = get_input_language ();
   string out_lan= get_output_language ();
   return to_qstring (tm_var_encode (translate (s, in_lan, out_lan)));
+}
+
+string
+qt_scheme_quote (const QString& text) {
+  return moebius::data::scm_quote (from_qstring (text));
+}
+
+string
+qt_scheme_quote_utf8 (const QString& text) {
+  return moebius::data::scm_quote (from_qstring_utf8 (text));
 }
 
 string

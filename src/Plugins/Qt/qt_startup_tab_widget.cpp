@@ -44,14 +44,6 @@ constexpr int kQuitBorderRadius= 4;   // Quit 按钮圆角
 constexpr int kQuitPadY        = 8;   // Quit 按钮纵向内边距
 constexpr int kQuitPadX        = 12;  // Quit 按钮横向内边距
 constexpr int kQuitButtonFontPx= 13;  // Quit 按钮字号
-
-QString
-escape_for_scheme_string (const QString& text) {
-  QString escaped= text;
-  escaped.replace ("\\", "\\\\");
-  escaped.replace ("\"", "\\\"");
-  return escaped;
-}
 } // namespace
 
 /**
@@ -235,13 +227,13 @@ QTStartupTabWidget::create_nav_button (const QString& text) {
  */
 void
 QTStartupTabWidget::setup_right_content (QStackedWidget* stackedWidget) {
-  // 添加3个页面到堆叠控件（OpenFolder没有页面，直接触发操作）
+  // 添加3个页面到堆叠控件（OpenDocument没有页面，直接触发操作）
   stackedWidget->addWidget (create_file_page ());     // index 0 - File
   stackedWidget->addWidget (create_template_page ()); // index 1 - Template
   stackedWidget->addWidget (create_settings_page ()); // index 2 - Settings
 
   // 入口切换时，同步切换堆叠控件的当前页面
-  // 注意：OpenFolder 没有对应页面，需要调整索引映射
+  // 注意：OpenDocument 没有对应页面，需要调整索引映射
   connect (this, &QTStartupTabWidget::entry_changed, stackedWidget,
            [stackedWidget] (QTStartupTabWidget::Entry entry) {
              int index;
@@ -292,16 +284,8 @@ QTStartupTabWidget::create_template_page () {
              if (filePage_) {
                filePage_->addRecentDoc (filePath);
              }
-             // Escape special characters for Scheme string literal
-             // Handle backslash (Windows paths) and double quote
-             QString escapedPath= filePath;
-             escapedPath.replace ("\\", "\\\\"); // Escape backslash first
-             escapedPath.replace ("\"", "\\\""); // Escape double quote
-
-             QString schemeCmd=
-                 QString ("(load-document \"%1\")").arg (escapedPath);
-             QByteArray utf8= schemeCmd.toUtf8 ();
-             eval_scheme (utf8.constData ());
+             eval_scheme ("(load-document " * qt_scheme_quote_utf8 (filePath) *
+                          ")");
            });
 
   return templatePage_;
@@ -353,10 +337,7 @@ QTStartupTabWidget::keyPressEvent (QKeyEvent* event) {
   string key= from_key_press_event (event);
   if (is_empty (key)) return QWidget::keyPressEvent (event);
 
-  QString cmd= QString ("(key-press \"%1\")")
-                   .arg (escape_for_scheme_string (to_qstring (key)));
-  QByteArray utf8= cmd.toUtf8 ();
-  eval_scheme (utf8.constData ());
+  eval_scheme ("(key-press " * qt_scheme_quote (to_qstring (key)) * ")");
   event->accept ();
 }
 
@@ -365,9 +346,6 @@ QTStartupTabWidget::keyReleaseEvent (QKeyEvent* event) {
   string key= from_key_release_event (event);
   if (is_empty (key)) return QWidget::keyReleaseEvent (event);
 
-  QString cmd= QString ("(key-press \"%1\")")
-                   .arg (escape_for_scheme_string (to_qstring (key)));
-  QByteArray utf8= cmd.toUtf8 ();
-  eval_scheme (utf8.constData ());
+  eval_scheme ("(key-press " * qt_scheme_quote (to_qstring (key)) * ")");
   event->accept ();
 }
