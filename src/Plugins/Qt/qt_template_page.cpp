@@ -43,17 +43,18 @@ namespace {
 constexpr int PREVIEW_IMAGE_WIDTH= 600;
 
 // 缩略图尺寸（使用2x尺寸以便在高分屏上显示清晰）
-constexpr int THUMBNAIL_WIDTH = 240;
-constexpr int THUMBNAIL_HEIGHT= 135;
+constexpr int THUMBNAIL_WIDTH = 160;
+constexpr int THUMBNAIL_HEIGHT= 227;
 
 constexpr int kPageMargin          = 16;  // 页面边距（减小边白）
 constexpr int kPageSpacing         = 24;  // 页面主布局间距
 constexpr int kCategorySpacing     = 8;   // 分类按钮间距
-constexpr int kGridSpacing         = 20;  // 模板网格间距
-constexpr int kCardWidth           = 264; // 模板卡片宽度
-constexpr int kCardHeight          = 220; // 模板卡片高度
-constexpr int kCardMargin          = 12;  // 卡片内边距
-constexpr int kCardSpacing         = 8;   // 卡片内部间距
+constexpr int kGridSpacing         = 13;  // 模板网格间距
+constexpr int kCardWidth           = 176; // 模板卡片宽度
+constexpr int kCardHeight          = 243; // 模板卡片高度（仅缩略图区域）
+constexpr int kCardMargin          = 8;   // 卡片内边距
+constexpr int kCardSpacing         = 5;   // 卡片内部间距
+constexpr int kNameLabelMaxWidth   = 176; // 模板名称最大宽度
 constexpr int kNameLabelMaxHeight  = 40;  // 模板名称最大高度
 constexpr int kPreviewDialogMinW   = 700; // 预览弹窗最小宽度
 constexpr int kPreviewDialogMinH   = 800; // 预览弹窗最小高度
@@ -61,17 +62,17 @@ constexpr int kPreviewLayoutSpacing= 16;  // 预览弹窗布局间距
 constexpr int kPreviewLayoutMargin = 24;  // 预览弹窗布局边距
 constexpr int kPageTitleFontPx     = 24;  // 页面标题字号
 constexpr int kLoadingFontPx       = 14;  // Loading 文案字号
-constexpr int kTemplateNameFontPx  = 14;  // 模板名称字号
+constexpr int kTemplateNameFontPx  = 11;  // 模板名称字号
 constexpr int kPreviewTitleFontPx  = 18;  // 预览标题字号
 constexpr int kPreviewDescFontPx   = 14;  // 预览描述字号
 constexpr int kUseButtonFontPx     = 13;  // Use Template 按钮字号
-constexpr int kInfoFontPx          = 11;  // 模板信息字号
+constexpr int kInfoFontPx          = 10;  // 模板信息字号
 constexpr int kThumbRadiusPx       = 4;   // 缩略图圆角
 constexpr int kThumbBorderWidthPx  = 1;   // 缩略图边框宽度
 constexpr int kUseButtonRadiusPx   = 4;   // Use Template 按钮圆角
 constexpr int kUseButtonPadYPx     = 8;   // Use Template 按钮纵向内边距
 constexpr int kUseButtonPadXPx     = 24;  // Use Template 按钮横向内边距
-constexpr int kGridMarginPx        = 30;  // 网格布局上下边距
+constexpr int kGridMarginPx        = 0;   // 网格布局上下边距
 constexpr int kCategoryBtnRadiusPx = 12;  // 分类按钮圆角
 constexpr int kCategoryBtnPadYPx   = 6;   // 分类按钮纵向内边距
 constexpr int kCategoryBtnPadXPx   = 14;  // 分类按钮横向内边距
@@ -169,6 +170,7 @@ QTTemplatePage::setupUI () {
   scrollArea_->setHorizontalScrollBarPolicy (Qt::ScrollBarAlwaysOff);
 
   gridWidget_= new QWidget (scrollArea_);
+  gridWidget_->setObjectName ("startup-tab-grid");
   gridLayout_= new QGridLayout (gridWidget_);
   gridLayout_->setSpacing (DpiUtils::scaled (kGridSpacing));
   gridLayout_->setContentsMargins (0, DpiUtils::scaled (kGridMarginPx), 0,
@@ -284,7 +286,7 @@ QTTemplatePage::calculateColumnCount () const {
   if (availableWidth < cardSpace && availableWidth < cardWidth * 2) return 4;
 
   int columns= (availableWidth + spacing) / cardSpace;
-  return qBound (1, columns, 6);
+  return qBound (1, columns, 9);
 }
 
 void
@@ -366,18 +368,26 @@ QTTemplatePage::refreshTemplateGrid (const QString& category) {
 
 QWidget*
 QTTemplatePage::createTemplateCard (const TemplateMetadataPtr& tmpl) {
-  QFrame*      card  = new QFrame (gridWidget_);
+  // 外层容器
+  QWidget*     item      = new QWidget (gridWidget_);
+  QVBoxLayout* itemLayout= new QVBoxLayout (item);
+  itemLayout->setContentsMargins (0, 0, 0, 0);
+  itemLayout->setSpacing (DpiUtils::scaled (kCardSpacing));
+  item->setObjectName ("startup-tab-template-item");
+  item->setToolTip (tmpl->description);
+
+  // 缩略图卡片
+  QFrame*      card  = new QFrame (item);
   QVBoxLayout* layout= new QVBoxLayout (card);
   layout->setContentsMargins (
       DpiUtils::scaled (kCardMargin), DpiUtils::scaled (kCardMargin),
       DpiUtils::scaled (kCardMargin), DpiUtils::scaled (kCardMargin));
-  layout->setSpacing (DpiUtils::scaled (kCardSpacing));
+  layout->setSpacing (0);
   card->setObjectName ("startup-tab-template-card");
   card->setFixedSize (DpiUtils::scaled (kCardWidth),
                       DpiUtils::scaled (kCardHeight));
-  card->setCursor (Qt::PointingHandCursor);
   card->setProperty ("templateId", tmpl->id);
-  card->setToolTip (tmpl->description);
+  card->setCursor (Qt::PointingHandCursor);
   card->setFrameShape (QFrame::StyledPanel);
   card->setStyleSheet (QString ("QFrame#startup-tab-template-card {"
                                 "  border-radius: %1px;"
@@ -403,29 +413,42 @@ QTTemplatePage::createTemplateCard (const TemplateMetadataPtr& tmpl) {
     thumbnailLabel->setText (qt_translate ("No Preview"));
   }
 
+  itemLayout->addWidget (card, 0, Qt::AlignHCenter);
+
   // Template name
-  QLabel* nameLabel= new QLabel (tmpl->name, card);
+  QLabel* nameLabel= new QLabel (tmpl->name, item);
   nameLabel->setObjectName ("startup-tab-template-name");
   nameLabel->setAlignment (Qt::AlignCenter);
   nameLabel->setWordWrap (true);
-  nameLabel->setMaximumHeight (DpiUtils::scaled (kNameLabelMaxHeight));
+  nameLabel->setFixedWidth (DpiUtils::scaled (kNameLabelMaxWidth));
   DpiUtils::applyScaledFont (nameLabel, kTemplateNameFontPx);
-  layout->addWidget (nameLabel);
+  // 手动计算换行后的实际高度，避免 QLabel sizeHint 不准确导致截断
+  {
+    QFontMetrics fm (nameLabel->font ());
+    QRect        textRect= fm.boundingRect (
+        QRect (0, 0, DpiUtils::scaled (kNameLabelMaxWidth), INT_MAX),
+        Qt::AlignCenter | Qt::TextWordWrap, tmpl->name);
+    int neededHeight= textRect.height () + 4;
+    nameLabel->setFixedHeight (
+        qMin (neededHeight, DpiUtils::scaled (kNameLabelMaxHeight)));
+  }
+  nameLabel->setSizePolicy (QSizePolicy::Fixed, QSizePolicy::Fixed);
+  itemLayout->addWidget (nameLabel, 0, Qt::AlignHCenter);
 
   // Author and version
   QLabel* infoLabel=
-      new QLabel (QString ("%1 · v%2").arg (tmpl->author, tmpl->version), card);
+      new QLabel (QString ("%1 · v%2").arg (tmpl->author, tmpl->version), item);
   infoLabel->setObjectName ("startup-tab-template-info");
   infoLabel->setAlignment (Qt::AlignCenter);
   DpiUtils::applyScaledFont (infoLabel, kInfoFontPx);
-  layout->addWidget (infoLabel);
+  itemLayout->addWidget (infoLabel);
 
-  layout->addStretch ();
+  itemLayout->addStretch ();
 
-  // Install event filter to handle clicks
+  // Install event filter on card only
   card->installEventFilter (this);
 
-  return card;
+  return item;
 }
 
 void
@@ -569,7 +592,7 @@ bool
 QTTemplatePage::eventFilter (QObject* watched, QEvent* event) {
   if (event->type () == QEvent::MouseButtonRelease) {
     QWidget* card= qobject_cast<QWidget*> (watched);
-    if (card && card->parent () == gridWidget_) {
+    if (card && card->objectName () == "startup-tab-template-card") {
       QString templateId= card->property ("templateId").toString ();
       if (!templateId.isEmpty ()) {
         showTemplatePreview (templateId);
