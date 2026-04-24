@@ -40,8 +40,8 @@
 #include "sys_utils.hpp"
 
 // 最多显示的最近文档数量
-static const int MAX_RECENT_DOCS       = 10;
-static const int MAX_GLOBAL_RECENT_DOCS= 25;
+static const int MAX_RECENT_DOCS       = 50;
+static const int MAX_GLOBAL_RECENT_DOCS= 100;
 
 namespace {
 constexpr int kMainMargin         = 32;   // 主内容区外边距
@@ -59,15 +59,15 @@ constexpr int kSectionTitleFontPx = 16;   // 分区标题字号
 constexpr int kStyleIconFontPx    = 48;   // 样式图标字母字号
 constexpr int kStyleNameFontPx    = 14;   // 样式名称字号
 constexpr int kRecentListRadius   = 8;    // Recent 列表圆角
-constexpr int kRecentItemHeight   = 64;   // Recent 列表项高度
+constexpr int kRecentItemHeight   = 40;   // Recent 列表项高度
 constexpr int kRecentItemRadius   = 4;    // Recent 列表项圆角
 constexpr int kRecentItemMarginX  = 4;    // Recent 列表项横向边距
 constexpr int kRecentItemMarginY  = 2;    // Recent 列表项纵向边距
 constexpr int kRecentItemPaddingX = 8;    // Recent 列表项横向内边距
 constexpr int kRecentItemPaddingY = 6;    // Recent 列表项纵向内边距
-constexpr int kRecentItemSpacing  = 3;    // Recent 名称与路径行间距
+constexpr int kRecentItemSpacing  = 3;    // Recent 名称与时间标签间距
 constexpr int kRecentNameFontPx   = 15;   // Recent 文件名字号
-constexpr int kRecentPathFontPx   = 11;   // Recent 路径字号
+constexpr int kRecentTimeFontPx   = 11;   // Recent 时间字号
 constexpr int kRecentRefreshMs    = 1000; // Recent 自动刷新周期
 } // namespace
 
@@ -491,7 +491,8 @@ QtFilePage::renderRecentDocs () {
 
     auto* rowWidget= new QWidget (recentList_);
     rowWidget->setObjectName ("startup-tab-recent-item");
-    auto* rowLayout= new QVBoxLayout (rowWidget);
+    rowWidget->setAttribute (Qt::WA_TransparentForMouseEvents);
+    auto* rowLayout= new QHBoxLayout (rowWidget);
     rowLayout->setContentsMargins (DpiUtils::scaled (kRecentItemPaddingX),
                                    DpiUtils::scaled (kRecentItemPaddingY),
                                    DpiUtils::scaled (kRecentItemPaddingX),
@@ -505,12 +506,15 @@ QtFilePage::renderRecentDocs () {
     nameFont.setBold (true);
     nameLabel->setFont (nameFont);
 
-    auto* pathLabel= new QLabel (doc.filePath, rowWidget);
-    pathLabel->setObjectName ("startup-tab-recent-path");
-    DpiUtils::applyScaledFont (pathLabel, kRecentPathFontPx);
+    auto* timeLabel= new QLabel (qt_translate ("Last opened") + ": " +
+                                     doc.openedAt.toString ("yyyy-MM-dd hh:mm"),
+                                 rowWidget);
+    timeLabel->setObjectName ("startup-tab-recent-time");
+    DpiUtils::applyScaledFont (timeLabel, kRecentTimeFontPx);
+    timeLabel->setAlignment (Qt::AlignRight | Qt::AlignVCenter);
 
-    rowLayout->addWidget (nameLabel);
-    rowLayout->addWidget (pathLabel);
+    rowLayout->addWidget (nameLabel, 1, Qt::AlignLeft | Qt::AlignVCenter);
+    rowLayout->addWidget (timeLabel, 0, Qt::AlignRight | Qt::AlignVCenter);
     recentList_->setItemWidget (item, rowWidget);
   }
 
@@ -574,6 +578,14 @@ QtFilePage::removeRecentDoc (const QString& path) {
   refreshRecentDocs ();
 }
 
+void
+QtFilePage::clearAllRecentDocs () {
+  eval_scheme ("(startup-tab-clear-all-recent)");
+  recentDocs_.clear ();
+  saveRecentDocs ();
+  refreshRecentDocs ();
+}
+
 /******************************************************************************
  * 事件处理
  ******************************************************************************/
@@ -600,9 +612,14 @@ QtFilePage::onRecentDocContextMenu (const QPoint& pos) {
 
   QMenu    menu (this);
   QAction* removeAction= menu.addAction (qt_translate ("Remove from list"));
+  QAction* clearAction = menu.addAction (qt_translate ("Clear list"));
 
-  if (menu.exec (recentList_->mapToGlobal (pos)) == removeAction) {
+  QAction* selected= menu.exec (recentList_->mapToGlobal (pos));
+  if (selected == removeAction) {
     removeRecentDoc (path);
+  }
+  else if (selected == clearAction) {
+    clearAllRecentDocs ();
   }
 }
 
