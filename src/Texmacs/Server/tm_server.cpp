@@ -27,6 +27,7 @@
 #include "s7_blackbox.hpp"
 #include "socket_notifier.hpp"
 #include "sys_utils.hpp"
+#include "tm_configure.hpp"
 #include "tm_link.hpp"
 #include "tm_sys_utils.hpp"
 #include <moebius/drd/drd_std.hpp>
@@ -56,7 +57,7 @@ init_app (app_type app) {
       tm_init_file= "$TEXMACS_PATH/progs/init-draw.scm";
     }
     else if (app == app_type::RESEARCH) {
-      tm_init_file= "$TEXMACS_PATH/progs/init-research.scm";
+      tm_init_file= "$TEXMACS_PATH/progs/" STEM_INIT_FILE;
     }
   }
   exec_file (materialize (tm_init_file));
