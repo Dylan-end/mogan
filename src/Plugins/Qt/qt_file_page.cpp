@@ -11,7 +11,6 @@
 
 #include "qt_file_page.hpp"
 #include <QButtonGroup>
-#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -25,49 +24,57 @@
 #include <QListWidget>
 #include <QListWidgetItem>
 #include <QMenu>
+#include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPointer>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QStringList>
 #include <QStyleOption>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <memory>
 
 #include "qt_dpi_utils.hpp"
 #include "qt_utilities.hpp"
 #include "s7_tm.hpp"
 #include "sys_utils.hpp"
+#include "template_manager.hpp"
+#include "thumbnail_loader.hpp"
 
 // 最多显示的最近文档数量
 static const int MAX_RECENT_DOCS       = 50;
 static const int MAX_GLOBAL_RECENT_DOCS= 100;
 
 namespace {
-constexpr int kMainMargin         = 32;  // 主内容区外边距
-constexpr int kMainSpacing        = 24;  // 主纵向布局间距
-constexpr int kStyleCardWidth     = 160; // 样式卡片宽度
-constexpr int kStyleCardHeight    = 256; // 样式卡片高度
-constexpr int kStyleIconSize      = 96;  // 样式卡片图标尺寸
-constexpr int kStyleCardTopPadding= 12;  // 样式卡片顶部内边距
-constexpr int kStyleCardMargin    = 8;   // 样式卡片内边距
-constexpr int kStyleCardSpacing   = 4;   // 样式卡片内部控件间距
-constexpr int kStyleCardsSpacing  = 16;  // 样式卡片横向间距
-constexpr int kStyleCardRadius    = 8;   // 样式卡片圆角
-constexpr int kStyleIconRadius    = 8;   // 样式图标圆角
-constexpr int kSectionTitleFontPx = 16;  // 分区标题字号
-constexpr int kStyleIconFontPx    = 48;  // 样式图标字母字号
-constexpr int kStyleNameFontPx    = 14;  // 样式名称字号
-constexpr int kRecentListRadius   = 8;   // Recent 列表圆角
-constexpr int kRecentItemHeight   = 40;  // Recent 列表项高度
-constexpr int kRecentItemRadius   = 4;   // Recent 列表项圆角
-constexpr int kRecentItemMarginX  = 4;   // Recent 列表项横向边距
-constexpr int kRecentItemMarginY  = 2;   // Recent 列表项纵向边距
-constexpr int kRecentItemPaddingX = 8;   // Recent 列表项横向内边距
-constexpr int kRecentItemPaddingY = 6;   // Recent 列表项纵向内边距
-constexpr int kRecentItemSpacing  = 3;   // Recent 名称与时间标签间距
-constexpr int kRecentNameFontPx   = 15;  // Recent 文件名字号
-constexpr int kRecentTimeFontPx   = 11;  // Recent 时间字号
+constexpr int kMainMargin           = 32;  // 主内容区外边距
+constexpr int kMainSpacing          = 24;  // 主纵向布局间距
+constexpr int kStyleCardWidth       = 160; // 样式卡片宽度
+constexpr int kStyleCardHeight      = 256; // 样式卡片高度
+constexpr int kStyleIconSize        = 96;  // 样式卡片图标尺寸
+constexpr int kStyleCardTopPadding  = 12;  // 样式卡片顶部内边距
+constexpr int kStyleCardMargin      = 8;   // 样式卡片内边距
+constexpr int kStyleCardSpacing     = 4;   // 样式卡片内部控件间距
+constexpr int kStyleCardsSpacing    = 16;  // 样式卡片横向间距
+constexpr int kStyleCardRadius      = 8;   // 样式卡片圆角
+constexpr int kSectionTitleFontPx   = 16;  // 分区标题字号
+constexpr int kStyleIconFontPx      = 48;  // 样式图标字母字号
+constexpr int kStyleNameFontPx      = 14;  // 样式名称字号
+constexpr int kRecentListRadius     = 8;   // Recent 列表圆角
+constexpr int kRecentItemHeight     = 40;  // Recent 列表项高度
+constexpr int kRecentItemRadius     = 4;   // Recent 列表项圆角
+constexpr int kRecentItemMarginX    = 4;   // Recent 列表项横向边距
+constexpr int kRecentItemMarginY    = 2;   // Recent 列表项纵向边距
+constexpr int kRecentItemPaddingX   = 8;   // Recent 列表项横向内边距
+constexpr int kRecentItemPaddingY   = 6;   // Recent 列表项纵向内边距
+constexpr int kRecentItemSpacing    = 3;   // Recent 名称与时间标签间距
+constexpr int kRecentNameFontPx     = 15;  // Recent 文件名字号
+constexpr int kRecentTimeFontPx     = 11;  // Recent 时间字号
+constexpr int kStyleTitleHeight     = 29;  // 模板卡片标题高度
+constexpr int kStyleCardInnerPadding= 4;   // 缩略图卡片内边距
+constexpr int kTemplateTitleFontPx  = 10;  // 模板卡片标题字号
 } // namespace
 
 /******************************************************************************
@@ -75,15 +82,28 @@ constexpr int kRecentTimeFontPx   = 11;  // Recent 时间字号
  ******************************************************************************/
 
 StyleCard::StyleCard (const DocStyle& style, QWidget* parent)
-    : QWidget (parent), styleId_ (style.id) {
-  int width   = DpiUtils::scaled (kStyleCardWidth);
-  int height  = DpiUtils::scaled (kStyleCardHeight);
-  int iconSize= DpiUtils::scaled (kStyleIconSize);
-
-  setFixedSize (width, height);
+    : QWidget (parent), styleId_ (style.id), templateId_ (style.templateId),
+      isTemplate_ (!style.templateId.isEmpty ()) {
+  setFixedSize (DpiUtils::scaled (kStyleCardWidth),
+                DpiUtils::scaled (kStyleCardHeight));
   setCursor (Qt::PointingHandCursor);
   setFocusPolicy (Qt::NoFocus);
   setToolTip (style.description);
+  setObjectName ("style-card");
+
+  if (isTemplate_) {
+    setupThumbnailMode (style);
+  }
+  else {
+    setupIconMode (style);
+  }
+}
+
+StyleCard::~StyleCard ()= default;
+
+void
+StyleCard::setupIconMode (const DocStyle& style) {
+  int iconSize= DpiUtils::scaled (kStyleIconSize);
 
   QVBoxLayout* layout= new QVBoxLayout (this);
   layout->setContentsMargins (DpiUtils::scaled (kStyleCardMargin),
@@ -91,7 +111,6 @@ StyleCard::StyleCard (const DocStyle& style, QWidget* parent)
                               DpiUtils::scaled (kStyleCardMargin),
                               DpiUtils::scaled (kStyleCardMargin));
   layout->setSpacing (DpiUtils::scaled (kStyleCardSpacing));
-
   layout->addStretch ();
 
   iconLabel_= new QLabel (this);
@@ -117,8 +136,52 @@ StyleCard::StyleCard (const DocStyle& style, QWidget* parent)
   layout->addWidget (nameLabel_, 0, Qt::AlignCenter);
 
   layout->addStretch ();
+}
 
-  setObjectName ("style-card");
+void
+StyleCard::setupThumbnailMode (const DocStyle& style) {
+  int cardW   = DpiUtils::scaled (kStyleCardWidth);
+  int cardH   = DpiUtils::scaled (kStyleCardHeight);
+  int titleH  = DpiUtils::scaled (kStyleTitleHeight);
+  int radiusPx= DpiUtils::scaled (kStyleCardRadius);
+  int pad     = DpiUtils::scaled (kStyleCardInnerPadding);
+
+  QFrame* cardFrame= new QFrame (this);
+  cardFrame->setObjectName ("style-card-frame");
+  cardFrame->setFixedSize (cardW, cardH);
+  cardFrame->setCursor (Qt::PointingHandCursor);
+  cardFrame->setFrameShape (QFrame::NoFrame);
+  cardFrame->setStyleSheet (QString ("QFrame#style-card-frame {"
+                                     "  border-radius: %1px;"
+                                     "}")
+                                .arg (radiusPx));
+
+  int thumbW= cardW - pad * 2;
+  int thumbH= cardH - pad * 2 - titleH;
+
+  thumbnailLabel_= new QLabel (cardFrame);
+  thumbnailLabel_->setGeometry (pad, pad, thumbW, thumbH);
+  thumbnailLabel_->setAlignment (Qt::AlignCenter);
+  thumbnailLabel_->setObjectName ("style-card-thumbnail");
+  thumbnailLabel_->setText (qt_translate ("Loading..."));
+
+  titleLabel_= new QLabel (style.name, cardFrame);
+  titleLabel_->setGeometry (pad, pad + thumbH, thumbW, titleH);
+  titleLabel_->setAlignment (Qt::AlignCenter);
+  titleLabel_->setObjectName ("style-card-title");
+  titleLabel_->setStyleSheet (QString ("QLabel#style-card-title {"
+                                       "  border-bottom-left-radius: %1px;"
+                                       "  border-bottom-right-radius: %1px;"
+                                       "}")
+                                  .arg (radiusPx));
+  DpiUtils::applyScaledFont (titleLabel_, kTemplateTitleFontPx);
+}
+
+void
+StyleCard::loadThumbnail (const QString& url) {
+  if (url.isEmpty () || !thumbnailLabel_) return;
+  ThumbnailLoader::instance ()->load (thumbnailLabel_, url,
+                                      thumbnailLabel_->size ());
 }
 
 void
@@ -146,11 +209,29 @@ StyleCard::paintEvent (QPaintEvent* event) {
 QtFilePage::QtFilePage (QWidget* parent) : QWidget (parent) {
   eval_scheme ("(use-modules (startup-tab startup-tab-file))");
 
-  styles_= {{"generic", qt_translate ("New Blank Document"),
-             qt_translate ("Create a new blank document"), true}};
+  styles_= {
+      {"generic", qt_translate ("New Blank Document"),
+       qt_translate ("Create a new blank document"), ""},
+      {"elegantbook", qt_translate ("ElegantBook Notes Template"),
+       qt_translate ("ElegantBook-style notes template"), "elegantbook"},
+      {"nsfc-ysf-c", qt_translate ("NSFC Young Scientists Fund"),
+       qt_translate ("NSFC Young Scientists Fund (Category C) Application"),
+       "nsfc-ysf-c"}};
 
   setupUI ();
   loadRecentDocs ();
+
+  TemplateManager* mgr= TemplateManager::instance ();
+  if (mgr) {
+    connect (mgr, &TemplateManager::templatesLoaded, this,
+             &QtFilePage::refreshTemplateThumbnails, Qt::UniqueConnection);
+    if (mgr->isInitialized () && !mgr->templates ().isEmpty ()) {
+      refreshTemplateThumbnails ();
+    }
+    else if (!mgr->isInitialized ()) {
+      QTimer::singleShot (0, [mgr] () { mgr->initialize (); });
+    }
+  }
 }
 
 QtFilePage::~QtFilePage ()= default;
@@ -159,13 +240,7 @@ void
 QtFilePage::showEvent (QShowEvent* event) {
   QWidget::showEvent (event);
   refreshRecentDocs ();
-  // 初始排列卡片
   QTimer::singleShot (0, this, &QtFilePage::rearrangeStyleCards);
-}
-
-void
-QtFilePage::hideEvent (QHideEvent* event) {
-  QWidget::hideEvent (event);
 }
 
 void
@@ -244,6 +319,17 @@ QtFilePage::setupStyleCards (QVBoxLayout* layout) {
 
     connect (card, &StyleCard::clicked, this,
              [this, card] () { createDocumentWithStyle (card->styleId ()); });
+
+    if (card->isTemplate ()) {
+      TemplateManager* mgr= TemplateManager::instance ();
+      if (mgr && mgr->isInitialized ()) {
+        if (auto meta= mgr->templateById (card->templateId ())) {
+          if (!meta->thumbnailUrl.isEmpty ()) {
+            card->loadThumbnail (meta->thumbnailUrl);
+          }
+        }
+      }
+    }
   }
 
   layout->addWidget (cardsContainer_);
@@ -457,7 +543,10 @@ QtFilePage::saveRecentDocs () {
   root["files"]  = updatedFiles;
 
   if (!file.open (QIODevice::WriteOnly | QIODevice::Truncate)) return;
-  file.write (QJsonDocument (root).toJson ());
+  QByteArray jsonData= QJsonDocument (root).toJson ();
+  if (file.write (jsonData) != jsonData.size ()) {
+    qWarning () << "Failed to write recent docs file";
+  }
   file.close ();
 }
 
@@ -623,12 +712,107 @@ QtFilePage::onRecentDocContextMenu (const QPoint& pos) {
 
 void
 QtFilePage::createDocumentWithStyle (const QString& styleId) {
-  // 验证 styleId 是预定义的合法值，防止注入攻击
-  static const QStringList validStyles= {"generic"};
-  if (!validStyles.contains (styleId)) {
-    qWarning () << "Invalid style ID:" << styleId;
+  if (styleId == "generic") {
+    eval_scheme ("(new-document-with-style " * qt_scheme_quote (styleId) * ")");
     return;
   }
 
-  eval_scheme ("(new-document-with-style " * qt_scheme_quote (styleId) * ")");
+  for (const auto& style : styles_) {
+    if (style.id == styleId) {
+      createDocumentFromTemplate (style.templateId);
+      return;
+    }
+  }
+
+  qWarning () << "Invalid style ID:" << styleId;
+}
+
+void
+QtFilePage::createDocumentFromTemplate (const QString& templateId) {
+  TemplateManager* mgr= TemplateManager::instance ();
+  if (!mgr) return;
+
+  if (mgr->isTemplateAvailableLocally (templateId)) {
+    QString localPath= mgr->localTemplatePath (templateId);
+    if (!localPath.isEmpty ()) {
+      eval_scheme ("(load-document " * qt_scheme_quote_utf8 (localPath) * ")");
+      return;
+    }
+  }
+
+  QPointer<QProgressDialog> dialog=
+      new QProgressDialog (qt_translate ("Downloading template..."),
+                           qt_translate ("Cancel"), 0, 100, this);
+  dialog->setWindowModality (Qt::WindowModal);
+  dialog->setAutoClose (true);
+
+  struct DownloadCtx {
+    QPointer<QProgressDialog> dialog;
+    QMetaObject::Connection   progressConn;
+    QMetaObject::Connection   completedConn;
+    QMetaObject::Connection   failedConn;
+    bool                      cancelledByUser= false;
+
+    void cleanup () {
+      QObject::disconnect (progressConn);
+      QObject::disconnect (completedConn);
+      QObject::disconnect (failedConn);
+      if (dialog) {
+        dialog->hide ();
+        dialog->deleteLater ();
+      }
+    }
+  };
+
+  auto ctx   = std::make_shared<DownloadCtx> ();
+  ctx->dialog= dialog;
+
+  connect (dialog, &QProgressDialog::canceled, this, [ctx, mgr, templateId] () {
+    ctx->cancelledByUser= true;
+    mgr->cancelDownload (templateId);
+  });
+
+  ctx->progressConn=
+      connect (mgr, &TemplateManager::downloadProgress, this,
+               [ctx] (const QString&, qint64 received, qint64 total) {
+                 if (!ctx->dialog || total <= 0) return;
+                 ctx->dialog->setMaximum (static_cast<int> (total));
+                 ctx->dialog->setValue (static_cast<int> (received));
+               });
+
+  ctx->completedConn= connect (
+      mgr, &TemplateManager::downloadCompleted, this,
+      [this, ctx, templateId] (const QString& id, const QString& localPath) {
+        if (id != templateId) return;
+        ctx->cleanup ();
+        eval_scheme ("(load-document " * qt_scheme_quote_utf8 (localPath) *
+                     ")");
+      });
+
+  ctx->failedConn= connect (
+      mgr, &TemplateManager::downloadFailed, this,
+      [this, ctx, templateId] (const QString& id, const QString& error) {
+        if (id != templateId) return;
+        ctx->cleanup ();
+        if (!ctx->cancelledByUser) {
+          QMessageBox::warning (this, qt_translate ("Download Failed"), error);
+        }
+      });
+
+  mgr->downloadTemplate (templateId);
+  dialog->show ();
+}
+
+void
+QtFilePage::refreshTemplateThumbnails () {
+  TemplateManager* mgr= TemplateManager::instance ();
+  if (!mgr || !mgr->isInitialized ()) return;
+
+  for (StyleCard* card : styleCards_) {
+    if (!card->isTemplate ()) continue;
+    auto meta= mgr->templateById (card->templateId ());
+    if (meta && !meta->thumbnailUrl.isEmpty ()) {
+      card->loadThumbnail (meta->thumbnailUrl);
+    }
+  }
 }

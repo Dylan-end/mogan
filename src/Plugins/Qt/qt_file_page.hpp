@@ -26,17 +26,16 @@ class QListWidget;
 class QListWidgetItem;
 class QButtonGroup;
 class QShowEvent;
-class QHideEvent;
 class QResizeEvent;
 
 /**
- * @brief 文档样式信息
+ * @brief 文档样式信息（支持空白文档和快捷模板）
  */
 struct DocStyle {
   QString id;          // 样式ID
   QString name;        // 显示名称
   QString description; // 描述
-  bool    isDefault;   // 是否为默认样式
+  QString templateId;  // 对应TemplateManager中的模板ID（空表示空白文档）
 };
 
 /**
@@ -49,27 +48,44 @@ struct RecentDoc {
 };
 
 /**
- * @brief 样式卡片部件
+ * @brief 样式卡片部件（支持图标模式和缩略图模板模式）
  */
 class StyleCard : public QWidget {
   Q_OBJECT
 
 public:
   explicit StyleCard (const DocStyle& style, QWidget* parent= nullptr);
+  ~StyleCard ();
 
   QString styleId () const { return styleId_; }
+  QString templateId () const { return templateId_; }
+  bool    isTemplate () const { return isTemplate_; }
 
 signals:
   void clicked ();
+
+public:
+  void loadThumbnail (const QString& url);
 
 protected:
   void mousePressEvent (QMouseEvent* event) override;
   void paintEvent (QPaintEvent* event) override;
 
 private:
+  void setupIconMode (const DocStyle& style);
+  void setupThumbnailMode (const DocStyle& style);
+
   QString styleId_;
+  QString templateId_;
+  bool    isTemplate_= false;
+
+  // Icon mode
   QLabel* iconLabel_= nullptr;
   QLabel* nameLabel_= nullptr;
+
+  // Thumbnail mode
+  QLabel* thumbnailLabel_= nullptr;
+  QLabel* titleLabel_    = nullptr;
 };
 
 /**
@@ -87,7 +103,6 @@ public:
 
 protected:
   void showEvent (QShowEvent* event) override;
-  void hideEvent (QHideEvent* event) override;
   void resizeEvent (QResizeEvent* event) override;
 
 private:
@@ -104,6 +119,8 @@ private:
   void removeRecentDoc (const QString& path);
   void clearAllRecentDocs ();
   void createDocumentWithStyle (const QString& styleId);
+  void createDocumentFromTemplate (const QString& templateId);
+  void refreshTemplateThumbnails ();
 
   // 样式卡片相关
   QList<DocStyle>   styles_;

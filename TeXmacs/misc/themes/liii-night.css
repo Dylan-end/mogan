@@ -1117,12 +1117,6 @@ QLabel#startup-tab-template-info {
 
 QLabel#startup-tab-template-thumbnail {
   background: #4a4f57;
-  border: 1px solid #616a75;
-}
-
-QLabel#startup-tab-template-thumbnail[thumbnailLoaded="true"] {
-  background: transparent;
-  border: none;
 }
 
 /* Startup tab - file page */
@@ -1177,6 +1171,24 @@ QLabel#style-card-icon {
 }
 
 QLabel#style-card-name {
+  color: #e2e8ee;
+}
+
+QFrame#style-card-frame {
+  border: 1px solid #3c3c3c;
+  background-color: #3a3a3a;
+}
+
+QFrame#style-card-frame:hover {
+  border: 1px solid #2791ad;
+}
+
+QLabel#style-card-thumbnail {
+  background: #4a4f57;
+}
+
+QLabel#style-card-title {
+  background-color: #3a3a3a;
   color: #e2e8ee;
 }
 
