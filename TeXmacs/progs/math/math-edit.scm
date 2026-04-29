@@ -465,8 +465,11 @@
            (tree-assign t r)))))
 
 (tm-define (variant-circulate t forward?)
-  (:require (tree-in? t '(left mid right around around*)))
-  (bracket-circulate t forward? mbrackets))
+   (begin
+    (display "=== Step5: Enter variant-circulate (bracket) ===\n")
+    (force-output)
+    (:require (tree-in? t '(left mid right around around*)))
+    (bracket-circulate t forward? mbrackets)))
 
 (define bigops
   '("<int>" "<intlim>" "<oint>" "<ointlim>"
@@ -1049,15 +1052,25 @@ list
     (when (not already-in-stack?)
       (set! tab-cycle-stack (cons comb tab-cycle-stack)))))
 
-(tm-define (math-tabcycle-menu-needed? comb)
+;;(tm-define (math-tabcycle-menu-needed? comb)
   ;; 管理栈状态
-  (manage-tab-stack comb)
+  ;;  (manage-tab-stack comb)
 
+  ;;  (let* ((size (length (math-tabcycle-symbols comb)))
+    ;;     (stack-depth (length tab-cycle-stack)))
+  ;;  (and (or (string-contains? comb "tab") (> stack-depth 1))
+    ;;     (> size 1))))
+
+(tm-define (math-tabcycle-menu-needed? comb)
+  (manage-tab-stack comb)
   (let* ((size (length (math-tabcycle-symbols comb)))
          (stack-depth (length tab-cycle-stack)))
+;;    (display "=== math-tabcycle-menu-needed? ===\n")
+;;    (display "  comb=") (display comb) (display "\n")
+;;    (display "  size=") (display size) (display "\n")
+;;    (display "  stack-depth=") (display stack-depth) (display "\n")
     (and (or (string-contains? comb "tab") (> stack-depth 1))
          (> size 1))))
-
 (tm-define (math-variant comb)
   ;; 触发数学符号Tab循环的展示
   ;; 输入:

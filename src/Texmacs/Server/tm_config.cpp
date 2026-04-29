@@ -65,6 +65,8 @@ tm_config_rep::kbd_get_command (string which, string& help, command& cmd) {
 static string
 apply_wildcards (string s, hashmap<string, tree> w) {
   int len, start, end, n= N (s);
+  //    cout<<"w"<<w<<"\n";
+  //    cout<<"s:"<<s<<' '<<"n:"<<n<<"\n";
   for (len= n; len > 0; len--) {
     for (start= 0; start <= (n - len); start++) {
       end= start + len;
@@ -74,20 +76,26 @@ apply_wildcards (string s, hashmap<string, tree> w) {
       string ss= s (start, end);
       if (s[end - 1] == ' ') ss= s (start, end - 1);
 
-      // cout << "  " << ss << " => " << w[ss] << LF;
+      //            cout<<"nbnb" << "  " << ss << " => " << w[ss] << LF;
       if (w->contains (ss)) {
-        tree   t    = w[ss];
-        string rr   = t[0]->label;
-        bool   lflag= (t[1]->label != "") || (start == 0);
-        bool   rflag= (t[2]->label != "") || (end == n);
+        //        cout<<"flag"<<"\n";
+        tree   t = w[ss];
+        string rr= t[0]->label;
+        //        cout<<"t:"<<t<<' '<<"rr"<<rr<<"\n";
+        bool lflag= (t[1]->label != "") || (start == 0);
+        bool rflag= (t[2]->label != "") || (end == n);
         if (lflag && rflag) {
           if ((end < n) && (rr != "") && (rr[N (rr) - 1] != '-')) rr= rr * " ";
           string r= s (0, start) * rr * s (end, n);
+          // cout << "=== apply_wildcards result: [" << r << "]" << '\n';
           return apply_wildcards (r, w);
         }
+        //      cout<<"nb"<<" "<<ss<<"\n";
       }
+      //           cout<<"nb"<<" "<<ss<<"\n";
     }
   }
+  //  cout<<"s:"<<s<<"\n";
   return s;
 }
 
@@ -116,25 +124,38 @@ tm_config_rep::set_variant_keys (string var, string unvar) {
 
 void
 tm_config_rep::variant_simplification (string& which) {
+  //  cout<<"Before" << which<<"\n";
   if (ends (which, var_suffix)) {
+    //   cout<<"Mid" << which<<"\n";
     object obj= rewrite_find_key_binding (which);
-    // cout << which << " => " << obj << LF;
+    //    cout << which << " => " << obj << LF;
     if (obj == object (false))
       while (ends (which, var_suffix))
         which= which (0, N (which) - N (var_suffix));
   }
+  //  cout<<"After1" << which<<"\n";
   if (ends (which, unvar_suffix)) {
-    if (ends (which, var_suffix * unvar_suffix))
+    //   cout<<"flag1\n";
+    if (ends (which, var_suffix * unvar_suffix)) {
+      //   cout<<"flag2\n";
       which= which (0, N (which) - N (var_suffix) - N (unvar_suffix));
+    }
     else {
+      //    cout<<"flag3\n";
       which= which (0, N (which) - N (unvar_suffix));
+      //   cout<<"K1"<<which<<"\n";
       while (true) {
+        // string which1=which;
+        // if(which1[0]=='>') which1=which1 * var_suffix;
         if (rewrite_find_key_binding (which * var_suffix) == object (false))
           break;
+        //      cout<<"K2"<<which<<"\n";
         which= which * var_suffix;
+        //      cout<<"K3"<<which<<"\n";
       }
     }
   }
+  // cout<<"After2" << which<<"\n";
 }
 
 /******************************************************************************
@@ -162,7 +183,9 @@ tm_config_rep::get_keycomb (string& which, int& status, command& cmd,
                             string& shorth, string& help) {
   string orig= which;
   if (DEBUG_KEYBOARD) debug_keyboard << which;
+  //  cout << "=== before variant_simplification: which=[" << which << "]\n";
   variant_simplification (which);
+//  cout << "=== after variant_simplification: which=[" << which << "]\n";
 #ifdef Q_OS_MAC
   if (N (which) == 3 && starts (which, "A-") && N (orig) == 7 &&
       (orig == which * " tab") &&
@@ -179,6 +202,7 @@ tm_config_rep::get_keycomb (string& which, int& status, command& cmd,
     return;
   }
 #endif
+  //  cout<<"flag"<<"\n";
   if (DEBUG_KEYBOARD) debug_keyboard << " -> " << which;
   string rew   = apply_wildcards (which, post_kbd_wildcards);
   bool   no_var= false;
@@ -186,33 +210,43 @@ tm_config_rep::get_keycomb (string& which, int& status, command& cmd,
     no_var= true;
     rew   = var_suffix (1, N (var_suffix));
   }
+  //  cout<<"First"<<no_var<<'\n';
   if (rew * unvar_suffix == orig) {
     no_var= true;
     rew   = unvar_suffix (1, N (unvar_suffix));
   }
+  //  cout<<"Second"<<no_var<<'\n';
   if (DEBUG_KEYBOARD) debug_keyboard << " -> " << rew << LF;
   object obj= find_key_binding (rew);
-  // cout << rew << " => " << obj << LF;
+  //  cout<<"First" << rew << " => " << obj << LF<<"\n";
   // if (obj == object (false) || (orig != which && !is_string (car (obj)))) {
   if (obj == object (false)) {
+    //    cout<<"flag1"<<"\n";
     status= 0;
     cmd   = command ();
     shorth= copy (rew);
     help  = "";
   }
   else if (!is_string (car (obj))) {
+    //    cout<<"flag2\n";
     status= 1;
     cmd   = as_command (car (obj));
+    //    cout<<"car:"<<car(obj)<<"\n";
     shorth= copy (rew);
-    help  = as_string (cadr (obj));
+    //    cout<<"shorth:"<<shorth<<"\n";
+    help= as_string (cadr (obj));
   }
   else {
+    //    cout<<"flag3\n";
     status= 2;
     cmd   = command ();
     shorth= as_string (car (obj));
     help  = as_string (cadr (obj));
   }
-  if (no_var) status+= 3;
+  if (no_var) {
+    status+= 3;
+    //    cout<<"flag4\n";
+  }
 }
 
 /******************************************************************************
