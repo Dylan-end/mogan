@@ -74,19 +74,19 @@ apply_wildcards (string s, hashmap<string, tree> w) {
       string ss= s (start, end);
       if (s[end - 1] == ' ') ss= s (start, end - 1);
 
-      //cout << " " << ss << " => " << w[ss] << LF;
+      // cout << " " << ss << " => " << w[ss] << LF;
       if (w->contains (ss)) {
-        tree   t = w[ss];
-        string rr= t[0]->label;
-        bool lflag= (t[1]->label != "") || (start == 0);
-        bool rflag= (t[2]->label != "") || (end == n);
+        tree   t    = w[ss];
+        string rr   = t[0]->label;
+        bool   lflag= (t[1]->label != "") || (start == 0);
+        bool   rflag= (t[2]->label != "") || (end == n);
         if (lflag && rflag) {
           if ((end < n) && (rr != "") && (rr[N (rr) - 1] != '-')) rr= rr * " ";
           string r= s (0, start) * rr * s (end, n);
           return apply_wildcards (r, w);
         }
-       }
-     }
+      }
+    }
   }
   return s;
 }
@@ -205,7 +205,7 @@ tm_config_rep::get_keycomb (string& which, int& status, command& cmd,
     status= 1;
     cmd   = as_command (car (obj));
     shorth= copy (rew);
-    help= as_string (cadr (obj));
+    help  = as_string (cadr (obj));
   }
   else {
     status= 2;

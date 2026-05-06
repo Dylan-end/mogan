@@ -123,7 +123,7 @@ edit_interface_rep::try_shortcut (string comb) {
         return false;
       }
     }
-    sh_s= comb;
+    sh_s   = comb;
     sh_mark= new_marker ();
     mark_start (sh_mark);
     archive_state ();
