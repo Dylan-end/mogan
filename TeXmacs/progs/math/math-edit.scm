@@ -948,62 +948,6 @@ list | boolean
                                            (not primary-name)
                                            (not (string=? (cadr entry) primary-name))))
                                      others)))
- (tm-define (tabcycle-symbols comb)
-  ;; 根据按键序列获取数学符号Tab循环展示的列表
-  ;; 输入: 
-  ;;     comb: 按键序列，类型为string，如"< tab tab = tab"
-  ;; 处理过程:
-  ;;     1. 递归删除末尾所有的 " tab"，得到基本序列
-  ;;        例如: "< tab tab = tab tab" -> "< tab tab ="
-  ;;     2. 查找该基本序列对应的符号绑定
-  ;;     3. 如果绑定不存在，返回空列表
-  ;;     4. 如果绑定存在，继续查找所有以该基本序列为前缀的符号绑定
-  ;;     5. 返回找到的所有直接的符号绑定列表，按照键盘组合序列长度排序，
-  ;;        例如((symbol-completion "<alpha>"))
-  ;; 输出:  
-  ;;     符号列表，格式为((symbol-completion "符号") ...)
-  (if (not (kbd-find-key-binding comb)) '()
-    (let* ((tab-info (let loop ((s comb) (count 0))
-                       (if (string-ends? s " tab")
-                           (loop (substring s 0 (- (string-length s) 4))
-                                 (+ count 1))
-                           (cons s count))))
-           (pre (car tab-info))
-           (tab-iter (cdr tab-info))
-           (pre (string-replace pre "space " ""))
-           (kbd-res (kbd-find-key-binding pre))
-           (kbd-sym (and (pair? kbd-res) (car kbd-res)))
-           ;; primary-sym 是当前已输入的符号 (pre 的绑定)
-           (primary-sym kbd-sym)
-           (base (cond
-                    ((string? primary-sym)
-                     `((symbol-completion ,primary-sym)))
-                    ((procedure? primary-sym)
-                     (let ((sym (function-to-symbol kbd-res)))
-                       (if sym (list sym) '())))
-                    (else '())))
-           ;; 使用新的 kbd-find-prefix-tab 获取所有 tab 切换候选
-           (tab-pairs (kbd-find-prefix-tab pre)))
-      (let ((others (filter-map (lambda (pair)
-                                  (let ((val (cdr pair)))
-                                    (if (and (pair? val) (string? (car val)))
-                                        `(symbol-completion ,(car val))
-                                        (function-to-symbol val))))
-                                tab-pairs)))
-        (if (not (null? base))
-            (let* ((primary-name (and (pair? (car base))
-                                      (= (length (car base)) 2)
-                                      (cadr (car base))))
-                   (filtered (filter (lambda (entry)
-                                       (or (not (pair? entry))
-                                           (not (= (length entry) 2))
-                                           (not (string? (cadr entry)))
-                                           (not primary-name)
-                                           (not (string=? (cadr entry) primary-name))))
-                                     others)))
-               (append base filtered))
-            '())))))
-
               (append base filtered))
             '())))))
 

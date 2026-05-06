@@ -74,7 +74,7 @@ apply_wildcards (string s, hashmap<string, tree> w) {
       string ss= s (start, end);
       if (s[end - 1] == ' ') ss= s (start, end - 1);
 
-      // cout << " " << ss << " => " << w[ss] << LF;
+      // cout << "  " << ss << " => " << w[ss] << LF;
       if (w->contains (ss)) {
         tree   t    = w[ss];
         string rr   = t[0]->label;
@@ -124,9 +124,8 @@ tm_config_rep::variant_simplification (string& which) {
         which= which (0, N (which) - N (var_suffix));
   }
   if (ends (which, unvar_suffix)) {
-    if (ends (which, var_suffix * unvar_suffix)) {
+    if (ends (which, var_suffix * unvar_suffix))
       which= which (0, N (which) - N (var_suffix) - N (unvar_suffix));
-    }
     else {
       which= which (0, N (which) - N (unvar_suffix));
       while (true) {
@@ -193,7 +192,7 @@ tm_config_rep::get_keycomb (string& which, int& status, command& cmd,
   }
   if (DEBUG_KEYBOARD) debug_keyboard << " -> " << rew << LF;
   object obj= find_key_binding (rew);
-  // cout<< rew << " => " << obj << LF<<"\n";
+  // cout<< rew << " => " << obj << LF;
   // if (obj == object (false) || (orig != which && !is_string (car (obj)))) {
   if (obj == object (false)) {
     status= 0;
