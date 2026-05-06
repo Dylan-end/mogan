@@ -446,11 +446,6 @@
   '(")" "]" "}" "<rangle>" "<rrbracket>" "<rfloor>" "<rceil>" "|" "<||>" "\\" "/" "<nobracket>"))
 
 (define (bracket-circulate t forward? brackets)
-;;  (display "=== bracket-circulate called ===\n")
-;;  (display "  t = ") (write t) (display "\n")
-;;  (display "  tree->string = ") (display (tree->string t)) (display "\n")
-;;  (display "  tree-is? 'right = ") (display (tree-is? t 'right)) (display "\n")
-;;  (display "  forward? = ") (display forward?) (display "\n")
   (cond ((and (tree-in? t '(around around*))
               (== (tree-arity t) 3))
          (bracket-circulate (tree-ref t 0) forward? lbrackets)
@@ -822,7 +817,6 @@ list | boolean
                ((null? (cdr body)) #f)
                (else
                 (let ((func-name (car body)))
-                ;;  (display "=== lambda-to-symbol: func-name=") (display func-name) (display "\n")
                   (case func-name
                     ;; Case 1: math-big-operator (处理积分、求和等大运算符)
                     ;; 转换目标: "<big-int-2>" (TeXmacs 内部字体图标名)
@@ -844,7 +838,7 @@ list | boolean
                                 (rb (caddr body)))
                             `(symbol-completion
                               ,(string-append lb rb)))))
-                     ;; Case 4: math-separator 
+                    ;; Case 4: math-separator 
                     ((math-separator)
                      (and (string? (cadr body))
                           `(symbol-completion
@@ -937,14 +931,12 @@ list | boolean
                     (else '())))
            ;; 使用新的 kbd-find-prefix-tab 获取所有 tab 切换候选
            (tab-pairs (kbd-find-prefix-tab pre)))
-        ;;   (display "  tab-pairs=") (write tab-pairs) (display "\n")
       (let ((others (filter-map (lambda (pair)
                                   (let ((val (cdr pair)))
                                     (if (and (pair? val) (string? (car val)))
                                         `(symbol-completion ,(car val))
                                         (function-to-symbol val))))
                                 tab-pairs)))
-      ;;  (display "  others=") (write others) (display "\n")
         (if (not (null? base))
             (let* ((primary-name (and (pair? (car base))
                                       (= (length (car base)) 2)
@@ -956,7 +948,7 @@ list | boolean
                                            (not primary-name)
                                            (not (string=? (cadr entry) primary-name))))
                                      others)))
-              (tm-define (tabcycle-symbols comb)
+ (tm-define (tabcycle-symbols comb)
   ;; 根据按键序列获取数学符号Tab循环展示的列表
   ;; 输入: 
   ;;     comb: 按键序列，类型为string，如"< tab tab = tab"
@@ -992,10 +984,6 @@ list | boolean
                     (else '())))
            ;; 使用新的 kbd-find-prefix-tab 获取所有 tab 切换候选
            (tab-pairs (kbd-find-prefix-tab pre)))
-   ;;   (display "=== tabcycle-symbols debug ===\n")
-   ;;   (display "  comb=") (display comb) (display "\n")
-   ;;   (display "  pre=") (display pre) (display "\n")
-   ;;   (display "  base=") (write base) (display "\n")
       (let ((others (filter-map (lambda (pair)
                                   (let ((val (cdr pair)))
                                     (if (and (pair? val) (string? (car val)))
@@ -1013,9 +1001,7 @@ list | boolean
                                            (not primary-name)
                                            (not (string=? (cadr entry) primary-name))))
                                      others)))
-             ;; (display "  filtered=") (write filtered) (display "\n")
-             ;; (display "  result length=") (display (length (append base filtered))) (display "\n")
-              (append base filtered))
+               (append base filtered))
             '())))))
 
               (append base filtered))

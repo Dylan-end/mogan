@@ -103,7 +103,6 @@ edit_interface_rep::interrupt_shortcut () {
 
 bool
 edit_interface_rep::try_shortcut (string comb) {
-  //  cout << "=== try_shortcut: received comb=[" << comb << "]\n";
   int     status;
   bool    executed= false;
   command cmd;
@@ -111,8 +110,7 @@ edit_interface_rep::try_shortcut (string comb) {
   string  help;
 
   sv->get_keycomb (comb, status, cmd, shorth, help);
-  // cout << "Try " << comb << " -> " << shorth << ", " << help
-  // << "/; " << sh_mark << ", " << status << "\n";
+  // << "; " << sh_mark << ", " << status << "\n";
   if (status != 0) {
     if (status >= 3) {
       interrupt_shortcut ();
@@ -125,9 +123,7 @@ edit_interface_rep::try_shortcut (string comb) {
         return false;
       }
     }
-
     sh_s= comb;
-    //  cout << "=== try_shortcut: set sh_s = [" << sh_s << "]\n";
     sh_mark= new_marker ();
     mark_start (sh_mark);
     archive_state ();
@@ -265,11 +261,11 @@ edit_interface_rep::is_combo_shortcuts (string key) {
 
 void
 edit_interface_rep::key_press (string gkey) {
-  //  cout << "=== key_press: gkey=" << gkey << '\n';
   set_user_active (true);
   string zero= "a";
   zero[0]    = '\0';
   string key = replace (gkey, "<#0>", zero);
+
   if (starts (key, "pre-edit:") && speech_pre_edit &&
       ends (key, ":" * current_speech))
     return;
@@ -342,8 +338,6 @@ edit_interface_rep::key_press (string gkey) {
   }
 
   string new_sh= N (sh_s) == 0 ? key : sh_s * " " * key;
-  // cout << "=== key_press: calling try_shortcut with new_sh=" << new_sh
-  // <<'\n';
   if (try_shortcut (new_sh)) return;
   if (new_sh != key) {
     interrupt_shortcut ();
@@ -431,7 +425,6 @@ edit_interface_rep::kbd_shortcut (string cmd) {
 
 void
 edit_interface_rep::handle_keypress (string key_u8, time_t t) {
-  //  cout << "=== handle_keypress: key_u8=" << key_u8 << "\n";
   if (is_nil (buf)) return;
 
   string key        = utf8_to_cork (key_u8);
