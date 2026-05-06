@@ -1050,6 +1050,7 @@ list
       (set! tab-cycle-stack (cons comb tab-cycle-stack)))))
 
 (tm-define (math-tabcycle-menu-needed? comb)
+  ;; 管理栈状态
   (manage-tab-stack comb)
 
   (let* ((size (length (math-tabcycle-symbols comb)))

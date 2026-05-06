@@ -192,7 +192,7 @@ tm_config_rep::get_keycomb (string& which, int& status, command& cmd,
   }
   if (DEBUG_KEYBOARD) debug_keyboard << " -> " << rew << LF;
   object obj= find_key_binding (rew);
-  // cout<< rew << " => " << obj << LF;
+  // cout << rew << " => " << obj << LF;
   // if (obj == object (false) || (orig != which && !is_string (car (obj)))) {
   if (obj == object (false)) {
     status= 0;
