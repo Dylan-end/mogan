@@ -546,8 +546,6 @@
 (tm-define (kbd-tab)
   (kbd-variant (focus-tree) #t))
 (tm-define (kbd-shift-tab)
-  (display "=== Step0: kbd-shift-tab called ===\n")
-  (force-output)
   (kbd-variant (focus-tree) #f))
 (tm-define (kbd-alternate-tab)
   (kbd-alternate-variant (focus-tree) #t))
